@@ -300,7 +300,7 @@ def get_db(commit):
             'DB_PORT=' + app.config['provision_port'],
             'DB_USER=' + app.config['provision_user'],
             'DB_PASSWORD=' + app.config['provision_password'],
-            'Db_NAME=' + db
+            'DB_NAME=' + db
         ])
         return result
     except Exception:
