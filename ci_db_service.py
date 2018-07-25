@@ -205,10 +205,10 @@ def spare_pool_task(merge_request, params):
 
 @app.route(PATH_ADD_DB, methods=['POST'])
 def add_db():
-    db_name = ''
+    db_name = None
     merge_request = request.get_json()
     g.merge_request = merge_request
-    for label in merge_request['labels']:
+    for label in merge_request.get('labels', []):
         if label['title'] == app.config['service_ci_label']:
 
             project_name = merge_request['project']['name']
@@ -277,6 +277,9 @@ def add_db():
                 if conn:
                     conn.close()
             break
+
+    if not db_name:
+        abort(400)
 
     return db_name
 
