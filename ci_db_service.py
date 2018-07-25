@@ -295,13 +295,13 @@ def get_db(commit):
         if not rows:
             abort(404)
         db = '%i_%s' % (rows[0][0], rows[0][1])
-        result = ' '.join(
-            app.config['provision_host'],
-            app.config['provision_port'],
-            app.config['provision_user'],
-            app.config['provision_password'],
-            db
-        )
+        result = ' '.join([
+            'DB_HOST=' + app.config['provision_host'],
+            'DB_PORT=' + app.config['provision_port'],
+            'DB_USER=' + app.config['provision_user'],
+            'DB_PASSWORD=' + app.config['provision_password'],
+            'Db_NAME=' + db
+        ])
         return result
     except Exception:
         raise
