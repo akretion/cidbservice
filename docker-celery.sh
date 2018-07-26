@@ -3,5 +3,5 @@
 USER_ID=$(stat -c '%u' /var/run/postgresql)
 SERVICE="cidbservice.app.celery"
 useradd -u $USER_ID $POSTGRES_USER
-celery worker -A $SERVICE --loglevel=INFO
+celery worker -A $SERVICE --loglevel=INFO --uid=$USER_ID
 pip show cidbservice
