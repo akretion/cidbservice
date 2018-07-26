@@ -1,0 +1,5 @@
+Flask
+celery
+psycopg2-binary
+configparser
+gunicorn
