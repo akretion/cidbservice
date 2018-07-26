@@ -130,7 +130,8 @@ def spare_last_number(cr, project_name):
     return spare_last_number
 
 
-def spare_create(cr, project_name, spare_prefix=None, template_user=None, template_prefix=None):
+def spare_create(cr, project_name, spare_prefix=None,
+                 template_user=None, template_prefix=None):
 
     if not spare_prefix:
         spare_prefix = app.config['provision_spare_prefix']
@@ -200,6 +201,7 @@ def spare_pool_task(merge_request, params):
     finally:
         if conn:
             conn.close()
+
 
 @app.route(PATH_ADD_DB, methods=['POST'])
 def add_db():
@@ -310,6 +312,7 @@ def get_db(commit):
     finally:
         if conn:
             conn.close()
+
 
 def create_app():
     return app
