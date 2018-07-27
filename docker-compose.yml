@@ -9,6 +9,8 @@ services:
       POSTGRES_GROUP: postgres
       SERVICE_HOST: 0.0.0.0
       SERVICE_PORT: 54320
+      GUNICORN_WORKERS: 5
+      GUNICORN_TIMEOUT: 3600
     volumes:
       - ./cidbservice.conf:/etc/cidbservice.conf
       - /var/run/postgresql/:/var/run/postgresql/

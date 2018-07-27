@@ -7,4 +7,6 @@ gunicorn -b $SERVICE_HOST:$SERVICE_PORT \
     --access-logfile - \
     $WSGI \
     --user $POSTGRES_USER \
-    --group $POSTGRES_GROUP
+    --group $POSTGRES_GROUP \
+    --workers $GUNICORN_WORKERS \
+    --timeout $GUNICORN_TIMEOUT

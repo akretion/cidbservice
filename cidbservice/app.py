@@ -1,17 +1,20 @@
 # /usr/bin/env python2
 
-import configparser
 import json
+import time
 
+import psycopg2
+import configparser
 from flask import Flask, request, g, abort
 from celery import Celery
 from psycopg2.extensions import AsIs
-import psycopg2
+from retrying import retry
 
 
 CONFIG_FILE = '/etc/cidbservice.conf'
 PATH_ADD_DB = '/add_db'
 PATH_GET_DB = '/get_db/<commit>'
+PATH_REFRESH_DB = '/refresh_db/<project_name>'
 
 
 app = Flask(__name__)
@@ -156,7 +159,7 @@ def spare_create(cr, project_name, spare_prefix=None,
 
 
 @celery.task
-def spare_pool_task(merge_request, params):
+def spare_pool_task(project_name, params):
 
     spare_pool = params['spare_pool']
     db_template = params['db_template']
@@ -167,12 +170,10 @@ def spare_pool_task(merge_request, params):
     template_prefix = params['template_prefix']
 
     try:
-        project_name = merge_request['project']['name']
         conn = None
 
         def spare_count(cr, project_name):
             prefix = 'spare_%s%%' % project_name
-            app.logger.info(prefix)
             cr.execute('''
                 SELECT count(*) from  pg_database where
                 datname like %s
@@ -203,6 +204,18 @@ def spare_pool_task(merge_request, params):
             conn.close()
 
 
+def get_celery_params(app):
+    return {
+        'spare_pool': app.config['provision_spare_pool'],
+        'db_template': app.config['db_template'],
+        'db_host': app.config['db_host'],
+        'db_user': app.config['db_user'],
+        'spare_prefix': app.config['provision_spare_prefix'],
+        'template_user': app.config['provision_template_user'],
+        'template_prefix': app.config['provision_template_prefix'],
+    }
+
+
 @app.route(PATH_ADD_DB, methods=['POST'])
 def add_db():
     db_name = None
@@ -216,6 +229,18 @@ def add_db():
             merge_id = attributes['id']
             merge_commit = attributes['last_commit']['id']
             db_name = '%i_%s' % (merge_id, merge_commit)
+
+            cr, conn = get_cursor(app.config['db_ci_ref_db'])
+            cr.execute('''
+                INSERT INTO merge_request(
+                    merge_id, merge_commit, merge_request
+                )
+                VALUES(%s, %s, %s);
+            ''', (
+                merge_id,
+                merge_commit,
+                json.dumps(merge_request)
+            ))
 
             try:
                 conn = None
@@ -249,28 +274,8 @@ def add_db():
                     ALTER DATABASE "%s" RENAME TO "%s"
                 ''', (AsIs(db_spare), AsIs(db_name)))
 
-                conn.close()
-                cr, conn = get_cursor(app.config['db_ci_ref_db'])
-                cr.execute('''
-                    INSERT INTO merge_request(
-                        merge_id, merge_commit, merge_request
-                    )
-                    VALUES(%s, %s, %s);
-                ''', (
-                    merge_id,
-                    merge_commit,
-                    json.dumps(merge_request)
-                ))
-                params = {
-                    'spare_pool': app.config['provision_spare_pool'],
-                    'db_template': app.config['db_template'],
-                    'db_host': app.config['db_host'],
-                    'db_user': app.config['db_user'],
-                    'spare_prefix': app.config['provision_spare_prefix'],
-                    'template_user': app.config['provision_template_user'],
-                    'template_prefix': app.config['provision_template_prefix'],
-                }
-                spare_pool_task.delay(merge_request, params)
+                params = get_celery_params(app)
+                spare_pool_task.delay(project_name, params)
             except Exception:
                 abort(500)
             finally:
@@ -284,11 +289,78 @@ def add_db():
     return db_name
 
 
+@celery.task
+def refresh_task(project_name, params):
+    try:
+        conn = None
+        template_prefix = params['spare_prefix']
+        prefix = '%s%s_%%' % (
+            template_prefix,
+            project_name,
+        )
+
+        cr, conn = get_cursor(
+            params['db_template'],
+            params['db_host'],
+            params['db_user'],
+        )
+        cr.execute('''
+            SELECT datname FROM pg_database
+            WHERE datname like %s
+        ''', (prefix,))
+        res = cr.fetchall()
+        for r in res:
+            datname = r[0]
+            app.logger.info('drop spare database "%s"' % datname)
+            cr.execute('DROP DATABASE "%s"', (AsIs(datname),))
+
+        spare_pool_task.delay(project_name, params)
+
+    except:
+        raise
+        app.logger.error('error deleting spare databases "%s" project' % (
+            project_name
+        ))
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route(PATH_REFRESH_DB, methods=['GET'])
+def refresh_db(project_name):
+    app.logger.info('triggering refeshing spare databases "%s" project' % (
+        project_name
+    ))
+    params = get_celery_params(app)
+    return str(refresh_task.delay(project_name, params))
+
+
+@retry(stop_max_delay=60*60*1000, wait_fixed=500)
+def wait_db(db_name):
+    res = None
+    try:
+        conn = None
+        cr, conn = get_cursor(app.config['db_template'])
+        cr.execute('''
+            SELECT count(*) FROM pg_database
+            where datname = %s
+        ''', (db_name,))
+        res = cr.fetchall()
+        if res[0][0]:
+            return db_name
+        else:
+            raise Exception('KO')
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.route(PATH_GET_DB, methods=['GET'])
 def get_db(commit):
     result = None
     try:
         conn = None
+        time.sleep(5)  # wait add_db call
         cr, conn = get_cursor(app.config['db_ci_ref_db'])
         cr.execute('''
             SELECT merge_id, merge_commit
@@ -298,6 +370,9 @@ def get_db(commit):
         if not rows:
             abort(404)
         db = '%i_%s' % (rows[0][0], rows[0][1])
+
+        wait_db(db)
+
         result = ' '.join([
             'DB_HOST=' + app.config['provision_host'],
             'DB_PORT=' + app.config['provision_port'],

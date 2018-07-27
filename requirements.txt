@@ -3,3 +3,4 @@ celery
 psycopg2-binary
 configparser
 gunicorn
+retrying
