@@ -130,7 +130,9 @@ def get_celery_params(app):
 @app.before_request
 def before_request():
     token = app.config['service_token']
-    if not token or request.headers.get('X-Gitlab-Token') != token:
+    gitlab_token = request.headers.get('X-Gitlab-Token')
+    if not token or gitlab_token != token:
+        app.logger.error('invalid X-Gitlab-Token')
         abort(403)
 
 
@@ -334,7 +336,7 @@ def refresh_db(project_name):
         project_name
     ))
     params = get_celery_params(app)
-    return str(refresh_task.delay(project_name, params))
+    return '%s\n' % str(refresh_task.delay(project_name, params))
 
 
 @celery.task
@@ -382,7 +384,7 @@ def drop_task(db_name, params):
 def drop_db(db_name):
     app.logger.info('triggering drop database "%s"' % db_name)
     params = get_celery_params(app)
-    return str(drop_task.delay(db_name, params))
+    return '%s\n' % str(drop_task.delay(db_name, params))
 
 
 @retry(stop_max_delay=60*60*1000, wait_fixed=500)
