@@ -15,6 +15,7 @@ CONFIG_FILE = '/etc/cidbservice.conf'
 PATH_ADD_DB = '/add_db'
 PATH_GET_DB = '/get_db/<commit>'
 PATH_REFRESH_DB = '/refresh_db/<project_name>'
+PATH_DROP_DB = '/drop_db/<db_name>'
 
 
 app = Flask(__name__)
@@ -113,6 +114,19 @@ def init():
     setup_service()
 
 
+def get_celery_params(app):
+    return {
+        'spare_pool': app.config['provision_spare_pool'],
+        'db_template': app.config['db_template'],
+        'db_host': app.config['db_host'],
+        'db_user': app.config['db_user'],
+        'ci_ref_db': app.config['db_ci_ref_db'],
+        'spare_prefix': app.config['provision_spare_prefix'],
+        'template_user': app.config['provision_template_user'],
+        'template_prefix': app.config['provision_template_prefix'],
+    }
+
+
 @app.before_request
 def before_request():
     token = app.config['service_token']
@@ -202,18 +216,6 @@ def spare_pool_task(project_name, params):
     finally:
         if conn:
             conn.close()
-
-
-def get_celery_params(app):
-    return {
-        'spare_pool': app.config['provision_spare_pool'],
-        'db_template': app.config['db_template'],
-        'db_host': app.config['db_host'],
-        'db_user': app.config['db_user'],
-        'spare_prefix': app.config['provision_spare_prefix'],
-        'template_user': app.config['provision_template_user'],
-        'template_prefix': app.config['provision_template_prefix'],
-    }
 
 
 @app.route(PATH_ADD_DB, methods=['POST'])
@@ -312,7 +314,7 @@ def refresh_task(project_name, params):
         for r in res:
             datname = r[0]
             app.logger.info('drop spare database "%s"' % datname)
-            cr.execute('DROP DATABASE "%s"', (AsIs(datname),))
+            cr.execute('DROP DATABASE "%s" IF EXISTS', (AsIs(datname),))
 
         spare_pool_task.delay(project_name, params)
 
@@ -333,6 +335,54 @@ def refresh_db(project_name):
     ))
     params = get_celery_params(app)
     return str(refresh_task.delay(project_name, params))
+
+
+@celery.task
+def drop_task(db_name, params):
+    try:
+        conn = None
+        merge_id, merge_commit = db_name.split('_')
+        merge_id = int(merge_id)
+        if merge_id and merge_commit:
+            cr, conn = get_cursor(
+                params['ci_ref_db'],
+                db_host=params['db_host'],
+                db_user=params['db_user'],
+            )
+            app.logger.info(
+                'delete merge_request merge_id=%i merge_commit=%s' %
+                (merge_id, merge_commit)
+            )
+            cr.execute('''
+                DELETE FROM merge_request WHERE
+                merge_id=%s AND merge_commit=%s
+            ''', (merge_id, merge_commit))
+
+            cr, conn = get_cursor(
+                params['db_template'],
+                params['db_host'],
+                params['db_user'],
+            )
+            app.logger.info('drop database "%s"' % db_name)
+            cr.execute(
+                'DROP DATABASE IF EXISTS "%s"',
+                (AsIs(db_name),)
+            )
+    except:
+        raise
+        app.logger.error('error droping database "%s" project' % (
+            db_name
+        ))
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route(PATH_DROP_DB, methods=['GET'])
+def drop_db(db_name):
+    app.logger.info('triggering drop database "%s"' % db_name)
+    params = get_celery_params(app)
+    return str(drop_task.delay(db_name, params))
 
 
 @retry(stop_max_delay=60*60*1000, wait_fixed=500)
