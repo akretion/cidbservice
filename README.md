@@ -9,6 +9,8 @@ To add this webhook got in the project settings add choose the `Integration` sub
 - enter the token string (use only letters and digits) of the CI DB service, which must be also configure in the cidbservice.conf on the CI DB service host in the `service` section with the key `token`
 - select only the checkbox "merge requests event" 
 
+Documentation on Gitlab webhooks: https://docs.gitlab.com/ce/user/project/integrations/webhooks.html
+
 ## CI / CD Settings
 In the settings menu of the gitlab project for which you need to addthe continuous integration tests select the submenu `CI / CD Settings` then add in the variables you must add 2 varialbes (with names and values):
 
@@ -28,3 +30,5 @@ test:
     - test "$SYNTAX_TEST" && echo "syntax check" || echo "full test with db $DB_NAME"
     - test "$DB_NAME" && curl $CURL_PARAMS $CI_DB_SERVICE_URL/drop_db/$DB_NAME
 ````
+
+Documentation on Gitlab CI/CD : https://docs.gitlab.com/ce/ci/quick_start/
