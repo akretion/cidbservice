@@ -70,7 +70,6 @@ def setup_service():
         app.logger.critical(
             'Impossible to create "merge_request" table'
         )
-        raise
     finally:
         if conn:
             conn.close()
@@ -214,7 +213,7 @@ def spare_pool_task(project_name, params):
                     template_prefix,
                 )
     except Exception:
-        raise
+        pass
     finally:
         if conn:
             conn.close()
@@ -321,7 +320,6 @@ def refresh_task(project_name, params):
         spare_pool_task.delay(project_name, params)
 
     except:
-        raise
         app.logger.error('error deleting spare databases "%s" project' % (
             project_name
         ))
@@ -371,7 +369,6 @@ def drop_task(db_name, params):
                 (AsIs(db_name),)
             )
     except:
-        raise
         app.logger.error('error droping database "%s" project' % (
             db_name
         ))
@@ -434,7 +431,6 @@ def get_db(commit):
         ])
         return result
     except Exception:
-        raise
         abort(503)
     finally:
         if conn:
