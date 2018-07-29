@@ -422,14 +422,26 @@ def get_db(commit):
 
         wait_db(db)
 
-        result = ' '.join([
-            'DB_HOST=' + app.config['provision_host'],
-            'DB_PORT=' + app.config['provision_port'],
-            'DB_USER=' + app.config['provision_user'],
-            'DB_PASSWORD=' + app.config['provision_password'],
-            'DB_NAME=' + db
-        ])
-        return result
+        result = []
+        result.append('DB_NAME=' + db)
+        if app.config['provision_host']:
+            result.append(
+                'DB_HOST=' + app.config['provision_host']
+            )
+        if app.config['provision_port']:
+            result.append(
+                'DB_PORT=' + app.config['provision_port']
+            )
+        if app.config['provision_user']:
+            result.append(
+                'DB_USER=' + app.config['provision_user']
+            )
+        if app.config['provision_password']:
+            result.append(
+                'DB_PASSWORD=' + app.config['provision_password']
+            )
+
+        return ' '.join(result)
     except Exception:
         abort(503)
     finally:
