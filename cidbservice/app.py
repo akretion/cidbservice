@@ -28,9 +28,11 @@ celery = Celery(
 )
 
 
-def get_cursor(database, db_host=None, db_user=None, autocommit=True):
+def get_cursor(database, db_host=None, db_user=None,
+               db_port=None, autocommit=True):
     conn = psycopg2.connect(
         host=db_host or app.config['db_host'],
+        port=db_port or app.config['db_port'],
         database=database,
         user=db_user or app.config['db_user'],
     )
@@ -85,6 +87,7 @@ def init():
     app.config['db_host'] = config.get('db', 'host')
     app.config['db_template'] = config.get('db', 'template')
     app.config['db_user'] = config.get('db', 'user')
+    app.config['db_port'] = config.get('db', 'port')
     app.config['db_ci_ref_db'] = config.get('db', 'ci_ref_db')
     # provision
     app.config['provision_template_prefix'] = \
@@ -118,6 +121,7 @@ def get_celery_params(app):
         'spare_pool': app.config['provision_spare_pool'],
         'db_template': app.config['db_template'],
         'db_host': app.config['db_host'],
+        'db_port': app.config['db_port'],
         'db_user': app.config['db_user'],
         'ci_ref_db': app.config['db_ci_ref_db'],
         'spare_prefix': app.config['provision_spare_prefix'],
@@ -179,6 +183,7 @@ def spare_pool_task(project_name, params):
     spare_pool = params['spare_pool']
     db_template = params['db_template']
     db_host = params['db_host']
+    db_port = params['db_port']
     db_user = params['db_user']
     spare_prefix = params['spare_prefix']
     template_user = params['template_user']
@@ -197,7 +202,12 @@ def spare_pool_task(project_name, params):
             return res[0][0]
 
         while True:
-            cr, conn = get_cursor(db_template, db_host, db_user)
+            cr, conn = get_cursor(
+                db_template,
+                db_host=db_host,
+                db_port=db_port,
+                db_user=db_user,
+            )
             count = spare_count(cr, project_name)
             if count >= spare_pool:
                 app.logger.info('spare pool ok for %s (%i/%i)' % (
@@ -304,8 +314,9 @@ def refresh_task(project_name, params):
 
         cr, conn = get_cursor(
             params['db_template'],
-            params['db_host'],
-            params['db_user'],
+            db_host=params['db_host'],
+            db_port=params['db_port'],
+            db_user=params['db_user'],
         )
         cr.execute('''
             SELECT datname FROM pg_database
