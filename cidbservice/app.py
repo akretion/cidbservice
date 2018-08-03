@@ -371,9 +371,9 @@ def drop_task(db_name, params):
 
             cr, conn = get_cursor(
                 params['db_template'],
-                params['db_host'],
-                params['db_port'],
-                params['db_user'],
+                db_host=params['db_host'],
+                db_port=params['db_port'],
+                db_user=params['db_user'],
             )
             app.logger.info('drop database "%s"' % db_name)
             cr.execute(
