@@ -16,6 +16,8 @@ PATH_ADD_DB = '/add_db'
 PATH_GET_DB = '/get_db/<commit>'
 PATH_REFRESH_DB = '/refresh_db/<project_name>'
 PATH_DROP_DB = '/drop_db/<db_name>'
+PATH_APPS_MAP = '/apps_map'
+PATH_UPDATE_APPS_MAP = '/update_apps_map/<db_name>'
 
 
 app = Flask(__name__)
@@ -65,13 +67,17 @@ def setup_service():
                 id serial NOT NULL PRIMARY KEY,
                 merge_id INTEGER NOT NULL,
                 merge_commit VARCHAR(80),
-                merge_request json NOT NULL
+                merge_request json NOT NULL,
+                merge_date TIMESTAMP NOT NULL,
+                merge_test_url VARCHAR(255),
+                backend_name VARCHAR(80)
             );
         ''')
     except:
         app.logger.critical(
             'Impossible to create "merge_request" table'
         )
+        raise
     finally:
         if conn:
             conn.close()
@@ -110,6 +116,15 @@ def init():
         config.get('provision', 'spare_prefix')
     app.config['provision_template_user'] = \
         config.get('provision', 'template_user')
+    app.config['provision_max_test_backend'] = \
+        config.getint('provision', 'max_test_backend')
+    app.config['provision_test_backend_prefix'] = \
+        config.get('provision', 'test_backend_prefix')
+    app.config['provision_test_url_suffix'] = \
+        config.get('provision', 'test_url_suffix')
+    app.config['provision_test_backend_base_port'] = \
+        config.getint('provision', 'test_backend_base_port')
+
     app.config['template_prefix'] = \
         config.get('provision', 'template_prefix')
 
@@ -241,18 +256,26 @@ def add_db():
             attributes = merge_request['object_attributes']
             merge_id = attributes['id']
             merge_commit = attributes['last_commit']['id']
+            source_branch = attributes['source_branch']
+            test_url = '%s.%s' % (
+                source_branch,
+                app.config['provision_test_url_suffix']
+            )
+
             db_name = '%i_%s' % (merge_id, merge_commit)
 
             cr, conn = get_cursor(app.config['db_ci_ref_db'])
             cr.execute('''
                 INSERT INTO merge_request(
-                    merge_id, merge_commit, merge_request
+                    merge_id, merge_commit, merge_request,
+                    merge_date, merge_test_url
                 )
-                VALUES(%s, %s, %s);
+                VALUES(%s, %s, %s, now(), %s);
             ''', (
                 merge_id,
                 merge_commit,
-                json.dumps(merge_request)
+                json.dumps(merge_request),
+                test_url,
             ))
 
             try:
@@ -297,7 +320,7 @@ def add_db():
             break
 
     if not db_name:
-        abort(400)
+        abort(404)
 
     return db_name
 
@@ -348,6 +371,108 @@ def refresh_db(project_name):
     return '%s\n' % str(refresh_task.delay(project_name, params))
 
 
+@app.route(PATH_APPS_MAP, methods=['GET'])
+def apps_map():
+    cr, conn = get_cursor(app.config['db_ci_ref_db'])
+    cr.execute('''
+        SELECT merge_test_url, backend_name
+        FROM merge_request
+        WHERE backend_name IS NOT NULL
+    ''')
+
+    map_entries = []
+    for url, backend in cr.fetchall():
+        map_entries.append('%s %s' % (
+            url, backend
+        ))
+    return '\n'.join(map_entries) + '\n'
+
+
+@app.route(PATH_UPDATE_APPS_MAP, methods=['GET'])
+def update_apps_map(db_name):
+
+    ref_name = request.args.get('ref_name')
+    base_url = request.args.get('test_url')
+    test_url = '%s.%s' % (
+        ref_name, base_url
+    )
+
+    def get_fifo_backend(cr, merge_id, merge_commit):
+
+        # try reuse backend from the same merge request
+        cr.execute('''
+            SELECT id, backend_name FROM merge_request
+            WHERE
+                backend_name IS NOT NULL AND
+                merge_id=%s AND merge_commit != %s
+            ORDER BY merge_date
+        ''', (merge_id, merge_commit))
+
+        for id_, backend_name in cr.fetchall():
+            return id_, backend_name
+
+        # if not found try to find the first free backend
+        max_backend = app.config['provision_max_test_backend']
+        for backend_num in range(1, max_backend + 1):
+            backend_name = '%s%i' % (
+                app.config['provision_test_backend_prefix'],
+                app.config['provision_test_backend_base_port'] +
+                backend_num
+            )
+            cr.execute('''
+                SELECT count(*) FROM merge_request
+                WHERE backend_name=%s
+            ''', (backend_name,))
+            backend_count = cr.fetchone()[0]
+            if not backend_count:
+                return None, backend_name
+
+        # if not found try to assign a backend from another merge_id
+        # first try to assign a backend with the same merge_id
+        cr.execute('''
+            SELECT id, backend_name FROM merge_request
+            WHERE
+                backend_name IS NOT NULL
+            ORDER by merge_date
+            LIMIT 1
+        ''')
+        for id_, backend_name in cr.fetchall():
+            return id_, backend_name
+
+        return None, None
+
+    try:
+        cr, conn = get_cursor(app.config['db_ci_ref_db'])
+        cr.execute('BEGIN')
+        merge_id, merge_commit = db_name.split('_')
+        merge_id = int(merge_id)
+        id_, backend_name = get_fifo_backend(cr, merge_id, merge_commit)
+        if id_:
+            cr.execute('''
+                UPDATE merge_request SET backend_name=NULL WHERE id=%s
+            ''', (id_))
+
+        cr.execute('''
+            UPDATE merge_request SET merge_test_url=%s, backend_name=%s
+            WHERE merge_id=%s AND merge_commit=%s
+        ''', (test_url, backend_name, merge_id, merge_commit))
+
+        cr.execute('COMMIT')
+        results = []
+        results.append('BACKEND_NAME=%s' % backend_name)
+        backend_port = int(backend_name.split('_')[-1:][0])
+        results.append('BACKEND_PORT=%i' % backend_port)
+        return ' '.join(results)
+
+    except:
+        app.logger.error('''error setting backend_name for the
+            merge_id=%s merge_commit=%s for provision
+        ''' % (merge_id, merge_commit))
+        cr.execute('ROLLBACK')
+        raise
+        return 'KO'
+
+
 @celery.task
 def drop_task(db_name, params):
     try:
@@ -358,6 +483,7 @@ def drop_task(db_name, params):
             cr, conn = get_cursor(
                 params['ci_ref_db'],
                 db_host=params['db_host'],
+                db_port=params['db_port'],
                 db_user=params['db_user'],
             )
             app.logger.info(
@@ -381,6 +507,7 @@ def drop_task(db_name, params):
                 (AsIs(db_name),)
             )
     except:
+        raise
         app.logger.error('error droping database "%s" project' % (
             db_name
         ))
@@ -420,17 +547,25 @@ def wait_db(db_name):
 def get_db(commit):
     result = None
     try:
+        message = '''
+            not a PR to test (not a "%s" labeled PR or not
+            triggered from a PR event)...
+        ''' % app.config['service_ci_label']
+        invalid_pr = 'INVALID_PR="%s"' % message
+
         conn = None
         time.sleep(5)  # wait add_db call
         cr, conn = get_cursor(app.config['db_ci_ref_db'])
         cr.execute('''
-            SELECT merge_id, merge_commit
+            SELECT merge_id, merge_commit, merge_test_url
             FROM merge_request WHERE merge_commit=%s
         ''', (commit,))
         rows = cr.fetchall()
         if not rows:
-            abort(404)
+            return invalid_pr
+
         db = '%i_%s' % (rows[0][0], rows[0][1])
+        test_url = rows[0][2]
 
         wait_db(db)
 
@@ -452,13 +587,18 @@ def get_db(commit):
             result.append(
                 'DB_PASSWORD=' + app.config['provision_password']
             )
+        # test env
+        result.append('VIRTUAL_HOST=' + test_url)
 
         return ' '.join(result)
     except Exception:
-        abort(503)
+        raise
+        return invalid_pr
     finally:
         if conn:
             conn.close()
+
+    return invalid_pr
 
 
 def create_app():
