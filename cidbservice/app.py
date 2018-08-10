@@ -1,9 +1,9 @@
 # /usr/bin/env python2
 
 import json
-import time
 
 import psycopg2
+import requests
 import configparser
 from flask import Flask, request, g, abort
 from celery import Celery
@@ -89,6 +89,9 @@ def init():
     # service
     app.config['service_token'] = config.get('service', 'token')
     app.config['service_ci_label'] = config.get('service', 'ci_label')
+    # runner
+    app.config['runner_token'] = config.get('runner', 'token')
+    app.config['runner_trigger_url'] = config.get('runner', 'trigger_url')
     # db
     app.config['db_host'] = config.get('db', 'host')
     app.config['db_template'] = config.get('db', 'template')
@@ -253,6 +256,7 @@ def add_db():
         if label['title'] == app.config['service_ci_label']:
 
             project_name = merge_request['project']['name']
+            project_id = merge_request['project']['id']
             attributes = merge_request['object_attributes']
             merge_id = attributes['id']
             merge_commit = attributes['last_commit']['id']
@@ -287,32 +291,42 @@ def add_db():
                     SELECT count(*) FROM pg_database
                     WHERE datname = %s
                 ''', (db_name,))
-                res = cr.fetchall()
-                if res[0][0]:
-                    conn.close()
-                    return db_name
+                res = cr.fetchone()
+                if not res[0]:
+                    cr.execute('''
+                        DROP DATABASE IF EXISTS "%s";
+                    ''', (AsIs(db_name),))
 
-                cr.execute('''
-                    DROP DATABASE IF EXISTS "%s";
-                ''', (AsIs(db_name),))
+                    last_number = spare_last_number(cr, project_name)
+                    if last_number:
+                        spare_number = int(last_number)
+                    else:
+                        spare_number = int(spare_create(cr, project_name))
 
-                last_number = spare_last_number(cr, project_name)
-                if last_number:
-                    spare_number = int(last_number)
-                else:
-                    spare_number = int(spare_create(cr, project_name))
+                    db_spare = '%s_%i' % (
+                        app.config['provision_spare_prefix'] + project_name,
+                        spare_number,
+                    )
+                    cr.execute('''
+                        ALTER DATABASE "%s" RENAME TO "%s"
+                    ''', (AsIs(db_spare), AsIs(db_name)))
 
-                db_spare = '%s_%i' % (
-                    app.config['provision_spare_prefix'] + project_name,
-                    spare_number,
+                    params = get_celery_params(app)
+                    spare_pool_task.delay(project_name, params)
+
+                # trigger gitlab-runner
+                trigger_url = '%s/api/v4/projects/%s/trigger/pipeline' % (
+                    app.config['runner_trigger_url'],
+                    project_id,
                 )
-                cr.execute('''
-                    ALTER DATABASE "%s" RENAME TO "%s"
-                ''', (AsIs(db_spare), AsIs(db_name)))
+                data = {
+                    'token': app.config['runner_token'],
+                    'ref': source_branch,
+                }
+                requests.post(trigger_url, data=data)
 
-                params = get_celery_params(app)
-                spare_pool_task.delay(project_name, params)
             except Exception:
+                raise
                 abort(500)
             finally:
                 if conn:
@@ -392,9 +406,8 @@ def apps_map():
 def update_apps_map(db_name):
 
     ref_name = request.args.get('ref_name')
-    base_url = request.args.get('test_url')
     test_url = '%s.%s' % (
-        ref_name, base_url
+        ref_name, app.config['provision_test_url_suffix']
     )
 
     def get_fifo_backend(cr, merge_id, merge_commit):
@@ -404,9 +417,9 @@ def update_apps_map(db_name):
             SELECT id, backend_name FROM merge_request
             WHERE
                 backend_name IS NOT NULL AND
-                merge_id=%s AND merge_commit != %s
+                merge_id=%s
             ORDER BY merge_date
-        ''', (merge_id, merge_commit))
+        ''', (merge_id,))
 
         for id_, backend_name in cr.fetchall():
             return id_, backend_name
@@ -450,7 +463,7 @@ def update_apps_map(db_name):
         if id_:
             cr.execute('''
                 UPDATE merge_request SET backend_name=NULL WHERE id=%s
-            ''', (id_))
+            ''', (id_,))
 
         cr.execute('''
             UPDATE merge_request SET merge_test_url=%s, backend_name=%s
@@ -554,7 +567,6 @@ def get_db(commit):
         invalid_pr = 'INVALID_PR="%s"' % message
 
         conn = None
-        time.sleep(5)  # wait add_db call
         cr, conn = get_cursor(app.config['db_ci_ref_db'])
         cr.execute('''
             SELECT merge_id, merge_commit, merge_test_url
