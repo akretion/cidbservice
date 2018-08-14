@@ -5,6 +5,7 @@ import json
 import psycopg2
 import requests
 import configparser
+import Queue
 from flask import Flask, request, g, abort
 from celery import Celery
 from psycopg2.extensions import AsIs
@@ -23,6 +24,28 @@ PATH_UPDATE_APPS_MAP = '/update_apps_map/<db_name>'
 app = Flask(__name__)
 config = configparser.ConfigParser()
 config.read(CONFIG_FILE)
+
+
+class Backend(object):
+    def __init__(self, id, domain, backend_name, priority):
+        self.id = id
+        self.domain = domain
+        self.backend_name = backend_name
+        self.priority = priority
+
+    def __cmp__(a, b):
+        return (a < b) - (a > b)
+
+    def __gt__(self, other):
+        return self.priority > other.priority
+
+
+def get_priority(merge_id, new_merge_id, count, max_priority=1000):
+    if merge_id == new_merge_id:
+        return max_priority
+    else:
+        return count
+
 
 celery = Celery(
     'cidbservice',
@@ -389,16 +412,22 @@ def refresh_db(project_name):
 def apps_map():
     cr, conn = get_cursor(app.config['db_ci_ref_db'])
     cr.execute('''
-        SELECT merge_test_url, backend_name
+        SELECT
+            merge_test_url, backend_name,
+            merge_id||'_'||merge_commit||' '||merge_date
         FROM merge_request
         WHERE backend_name IS NOT NULL
+        ORDER BY backend_name, merge_date DESC
     ''')
 
     map_entries = []
-    for url, backend in cr.fetchall():
-        map_entries.append('%s %s' % (
-            url, backend
-        ))
+    backend_done = []
+    for url, backend, comment in cr.fetchall():
+        if backend not in backend_done:
+            map_entries.append(u'%s %s # %s' % (
+                url, backend, comment
+            ))
+            backend_done.append(backend)
     return '\n'.join(map_entries) + '\n'
 
 
@@ -410,56 +439,63 @@ def update_apps_map(db_name):
         ref_name, app.config['provision_test_url_suffix']
     )
 
-    def get_fifo_backend(cr, merge_id, merge_commit):
+    def get_fifo_backend(elements, new_merge_id):
 
-        # try reuse backend from the same merge request
-        cr.execute('''
-            SELECT id, backend_name FROM merge_request
-            WHERE
-                backend_name IS NOT NULL AND
-                merge_id=%s
-            ORDER BY merge_date
-        ''', (merge_id,))
+        q = Queue.PriorityQueue()
 
-        for id_, backend_name in cr.fetchall():
-            return id_, backend_name
-
-        # if not found try to find the first free backend
-        max_backend = app.config['provision_max_test_backend']
-        for backend_num in range(1, max_backend + 1):
-            backend_name = '%s%i' % (
-                app.config['provision_test_backend_prefix'],
-                app.config['provision_test_backend_base_port'] +
-                backend_num
+        for id_, merge_id, merge_commit, merge_date, backend in elements:
+            count = sum(1 for e in elements if e[1] == merge_id and backend)
+            priority = get_priority(
+                merge_id, new_merge_id, count, len(elements)+1
             )
-            cr.execute('''
-                SELECT count(*) FROM merge_request
-                WHERE backend_name=%s
-            ''', (backend_name,))
-            backend_count = cr.fetchone()[0]
-            if not backend_count:
-                return None, backend_name
+            q.put(Backend(id_, test_url, backend, priority))
 
-        # if not found try to assign a backend from another merge_id
-        # first try to assign a backend with the same merge_id
-        cr.execute('''
-            SELECT id, backend_name FROM merge_request
-            WHERE
-                backend_name IS NOT NULL
-            ORDER by merge_date
-            LIMIT 1
-        ''')
-        for id_, backend_name in cr.fetchall():
-            return id_, backend_name
+        if q.qsize() >= app.config['provision_max_test_backend']:
+            # evict the oldest backend
+            last_backend = q.get()
+            last_backend_name = last_backend.backend_name
+            last_backend_id = last_backend.id
+        else:
+            # search the first free backend
+            max_backend = app.config['provision_max_test_backend']
+            for backend_num in range(1, max_backend + 1):
+                name = '%s%i' % (
+                    app.config['provision_test_backend_prefix'],
+                    app.config['provision_test_backend_base_port'] +
+                    backend_num
+                )
 
-        return None, None
+                last_backend_id = None
+                last_backend_name = name
+                for id_, merge_id, merge_commit, merge_date, backend_name in \
+                        elements:
+                    if name == backend_name:
+                        last_backend_name = name
+                        last_backend_id = id_
+                        break
+
+                # if free
+                if not last_backend_id:
+                    break
+
+        return last_backend_id, last_backend_name
 
     try:
         cr, conn = get_cursor(app.config['db_ci_ref_db'])
         cr.execute('BEGIN')
         merge_id, merge_commit = db_name.split('_')
         merge_id = int(merge_id)
-        id_, backend_name = get_fifo_backend(cr, merge_id, merge_commit)
+        cr.execute('''
+            SELECT id, merge_id, merge_commit, merge_date, backend_name
+            FROM merge_request
+            WHERE backend_name IS NOT NULL
+            ORDER BY merge_date
+        ''')
+        elements = []
+        for values in cr.fetchall():
+            elements.append(values)
+
+        id_, backend_name = get_fifo_backend(elements, merge_id)
         if id_:
             cr.execute('''
                 UPDATE merge_request SET backend_name=NULL WHERE id=%s
@@ -467,9 +503,14 @@ def update_apps_map(db_name):
 
         cr.execute('''
             UPDATE merge_request SET merge_test_url=%s, backend_name=%s
-            WHERE merge_id=%s AND merge_commit=%s
+            WHERE
+                id=(
+                    SELECT id from merge_request
+                    WHERE merge_id=%s AND merge_commit=%s
+                    ORDER by merge_date desc
+                    LIMIT 1
+                )
         ''', (test_url, backend_name, merge_id, merge_commit))
-
         cr.execute('COMMIT')
         results = []
         results.append('BACKEND_NAME=%s' % backend_name)
