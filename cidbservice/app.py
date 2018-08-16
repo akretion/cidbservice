@@ -17,7 +17,7 @@ PATH_ADD_DB = '/add_db'
 PATH_GET_DB = '/get_db/<commit>'
 PATH_REFRESH_DB = '/refresh_db/<project_name>'
 PATH_DROP_DB = '/drop_db/<db_name>'
-PATH_APPS_MAP = '/apps_map'
+PATH_APPS_MAP = '/apps_map/<format_>'
 PATH_UPDATE_APPS_MAP = '/update_apps_map/<db_name>'
 
 
@@ -204,7 +204,7 @@ def spare_create(cr, project_name, spare_prefix=None,
         template_prefix = app.config['provision_template_prefix']
 
     spare_number = int(spare_last_number(cr, project_name)) + 1
-    spare_db = '%s%s_%i' % (
+    spare_db = '%s%s_%02i' % (
         spare_prefix,
         project_name,
         spare_number,
@@ -275,12 +275,13 @@ def add_db():
     db_name = None
     merge_request = request.get_json()
     g.merge_request = merge_request
+    attributes = merge_request['object_attributes']
+    state = attributes['state']
     for label in merge_request.get('labels', []):
-        if label['title'] == app.config['service_ci_label']:
-
+        if label['title'] == app.config['service_ci_label'] \
+                and state == 'opened':
             project_name = merge_request['project']['name']
             project_id = merge_request['project']['id']
-            attributes = merge_request['object_attributes']
             merge_id = attributes['id']
             merge_commit = attributes['last_commit']['id']
             source_branch = attributes['source_branch']
@@ -409,7 +410,7 @@ def refresh_db(project_name):
 
 
 @app.route(PATH_APPS_MAP, methods=['GET'])
-def apps_map():
+def apps_map(format_):
     cr, conn = get_cursor(app.config['db_ci_ref_db'])
     cr.execute('''
         SELECT
@@ -417,16 +418,26 @@ def apps_map():
             merge_id||'_'||merge_commit||' '||merge_date
         FROM merge_request
         WHERE backend_name IS NOT NULL
-        ORDER BY backend_name, merge_date DESC
+        ORDER BY merge_date DESC
     ''')
 
     map_entries = []
     backend_done = []
     for url, backend, comment in cr.fetchall():
         if backend not in backend_done:
-            map_entries.append(u'%s %s # %s' % (
-                url, backend, comment
-            ))
+            if format_ == 'ports':
+                ref = url.replace(
+                    '.' + app.config['provision_test_url_suffix'],
+                    ''
+                )
+                backend_port = int(backend.split('_')[-1:][0])
+                map_entries.append(u'%s %s' % (
+                    '/%s' % ref, backend_port
+                ))
+            else:
+                map_entries.append(u'%s %s # %s' % (
+                    url, backend, comment
+                ))
             backend_done.append(backend)
     return '\n'.join(map_entries) + '\n'
 
