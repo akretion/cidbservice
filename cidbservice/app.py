@@ -282,7 +282,7 @@ def add_db():
                 and state == 'opened':
             project_name = merge_request['project']['name']
             project_id = merge_request['project']['id']
-            merge_id = attributes['id']
+            merge_id = attributes['iid']
             merge_commit = attributes['last_commit']['id']
             source_branch = attributes['source_branch']
             test_url = '%s.%s' % (
@@ -387,7 +387,7 @@ def refresh_task(project_name, params):
         for r in res:
             datname = r[0]
             app.logger.info('drop spare database "%s"' % datname)
-            cr.execute('DROP DATABASE "%s" IF EXISTS', (AsIs(datname),))
+            cr.execute('DROP DATABASE IF EXISTS "%s"', (AsIs(datname),))
 
         spare_pool_task.delay(project_name, params)
 
@@ -454,14 +454,22 @@ def update_apps_map(db_name):
 
         q = Queue.PriorityQueue()
 
+        merge_already_tested = False
         for id_, merge_id, merge_commit, merge_date, backend in elements:
+
             count = sum(1 for e in elements if e[1] == merge_id and backend)
             priority = get_priority(
                 merge_id, new_merge_id, count, len(elements)+1
             )
+
             q.put(Backend(id_, test_url, backend, priority))
 
-        if q.qsize() >= app.config['provision_max_test_backend']:
+            if merge_id == new_merge_id:
+                # keep only one review app per merge request
+                merge_already_tested = True
+
+        if merge_already_tested or \
+                q.qsize() >= app.config['provision_max_test_backend']:
             # evict the oldest backend
             last_backend = q.get()
             last_backend_name = last_backend.backend_name
