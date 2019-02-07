@@ -327,7 +327,7 @@ def add_db():
                     else:
                         spare_number = int(spare_create(cr, project_name))
 
-                    db_spare = '%s_%i' % (
+                    db_spare = '%s_%02i' % (
                         app.config['provision_spare_prefix'] + project_name,
                         spare_number,
                     )
