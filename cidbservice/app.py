@@ -47,6 +47,11 @@ def get_priority(merge_id, new_merge_id, count, max_priority=1000):
         return count
 
 
+def get_provision_param(project, key):
+    project_param = app.config['provision_%s_%s' % (project, key)]
+    default_param = app.config['provision_%s' % key]
+    return project_param or default_param
+
 celery = Celery(
     'cidbservice',
     broker=config.get('celery', 'broker'),
@@ -93,7 +98,8 @@ def setup_service():
                 merge_request json NOT NULL,
                 merge_date TIMESTAMP NOT NULL,
                 merge_test_url VARCHAR(255),
-                backend_name VARCHAR(80)
+                backend_name VARCHAR(80),
+                project VARCHAR(255)
             );
         ''')
     except:
@@ -121,53 +127,74 @@ def init():
     app.config['db_user'] = config.get('db', 'user')
     app.config['db_port'] = config.get('db', 'port')
     app.config['db_ci_ref_db'] = config.get('db', 'ci_ref_db')
-    # provision
-    app.config['provision_template_prefix'] = \
-        config.get('provision', 'template_prefix')
-    app.config['provision_template_user'] = \
-        config.get('provision', 'template_user')
-    app.config['provision_spare_prefix'] = \
-        config.get('provision', 'spare_prefix')
-    app.config['provision_spare_pool'] = \
-        config.getint('provision', 'spare_pool')
-    app.config['provision_host'] = \
-        config.get('provision', 'host')
-    app.config['provision_port'] = \
-        config.get('provision', 'port')
-    app.config['provision_user'] = \
-        config.get('provision', 'user')
-    app.config['provision_password'] = \
-        config.get('provision', 'password')
-    app.config['provision_spare_prefix'] = \
-        config.get('provision', 'spare_prefix')
-    app.config['provision_template_user'] = \
-        config.get('provision', 'template_user')
-    app.config['provision_max_test_backend'] = \
-        config.getint('provision', 'max_test_backend')
-    app.config['provision_test_backend_prefix'] = \
-        config.get('provision', 'test_backend_prefix')
-    app.config['provision_test_url_suffix'] = \
-        config.get('provision', 'test_url_suffix')
-    app.config['provision_test_backend_base_port'] = \
-        config.getint('provision', 'test_backend_base_port')
 
-    app.config['template_prefix'] = \
-        config.get('provision', 'template_prefix')
+    # provision
+    projects = ['']
+    try:
+        projects.extend([
+            p.strip() for p in config.get('provision', 'projects').split('')
+        ])
+    except ValueError:
+        pass
+
+    projects.append('')
+
+    def get_section(project):
+        section = 'provision'
+        if section:
+            section += '_%s' % project
+        return section
+
+    def get_key(section, key):
+        key = '%s_%s' % (
+            section,
+            key
+        )
+        return key
+
+    for project in projects:
+        section = get_section(project)
+        provision_str_key = [
+            'template_prefix',
+            'template_user',
+            'spare_prefix',
+            'host',
+            'port',
+            'user',
+            'password',
+            'spare_prefix',
+            'template_user',
+            'test_backend_prefix',
+            'test_url_suffix',
+            'template_prefix',
+        ]
+        for key in provision_str_key:
+            app.config[get_key(section, key)] = \
+                config.get(section, key)
+
+        provision_int_key = [
+            'spare_pool',
+            'max_test_backend',
+            'test_backend_base_port',
+        ]
+        for key in provision_int_key:
+            app.config[get_key(section, key)] = \
+                config.getint(section, key)
 
     setup_service()
 
 
-def get_celery_params(app):
+def get_celery_params(app, project):
     return {
-        'spare_pool': app.config['provision_spare_pool'],
+        'spare_pool': get_provision_param(project, 'spare_pool'),
         'db_template': app.config['db_template'],
         'db_host': app.config['db_host'],
         'db_port': app.config['db_port'],
         'db_user': app.config['db_user'],
         'ci_ref_db': app.config['db_ci_ref_db'],
-        'spare_prefix': app.config['provision_spare_prefix'],
-        'template_user': app.config['provision_template_user'],
-        'template_prefix': app.config['provision_template_prefix'],
+        'spare_prefix': get_provision_param(project, 'spare_prefix'),
+        'template_user': get_provision_param(project, 'template_user'),
+        'template_prefix': get_provision_param(project, 'template_prefix')
     }
 
 
@@ -197,11 +224,11 @@ def spare_create(cr, project_name, spare_prefix=None,
                  template_user=None, template_prefix=None):
 
     if not spare_prefix:
-        spare_prefix = app.config['provision_spare_prefix']
+        spare_prefix = get_provision_param(project_name, 'spare_prefix')
     if not template_user:
-        template_user = app.config['provision_template_user']
+        template_user = get_provision_param(project_name, 'template_user')
     if not template_prefix:
-        template_prefix = app.config['provision_template_prefix']
+        template_prefix = get_provision_param(project_name, 'template_prefix')
 
     spare_number = int(spare_last_number(cr, project_name)) + 1
     spare_db = '%s%s_%02i' % (
@@ -287,7 +314,7 @@ def add_db():
             source_branch = attributes['source_branch']
             test_url = '%s.%s' % (
                 source_branch,
-                app.config['provision_test_url_suffix']
+                get_provision_param(project_name, 'test_url_suffix')
             )
 
             db_name = '%i_%s' % (merge_id, merge_commit)
@@ -296,14 +323,15 @@ def add_db():
             cr.execute('''
                 INSERT INTO merge_request(
                     merge_id, merge_commit, merge_request,
-                    merge_date, merge_test_url
+                    merge_date, merge_test_url, project
                 )
-                VALUES(%s, %s, %s, now(), %s);
+                VALUES(%s, %s, %s, now(), %s, %s);
             ''', (
                 merge_id,
                 merge_commit,
                 json.dumps(merge_request),
                 test_url,
+                project_name
             ))
 
             try:
@@ -328,14 +356,14 @@ def add_db():
                         spare_number = int(spare_create(cr, project_name))
 
                     db_spare = '%s_%02i' % (
-                        app.config['provision_spare_prefix'] + project_name,
+                        get_provision_param('spare_prefix') + project_name,
                         spare_number,
                     )
                     cr.execute('''
                         ALTER DATABASE "%s" RENAME TO "%s"
                     ''', (AsIs(db_spare), AsIs(db_name)))
 
-                    params = get_celery_params(app)
+                    params = get_celery_params(app, project_name)
                     spare_pool_task.delay(project_name, params)
 
                 # trigger gitlab-runner
@@ -414,6 +442,7 @@ def apps_map(format_):
     cr, conn = get_cursor(app.config['db_ci_ref_db'])
     cr.execute('''
         SELECT
+            project,
             merge_test_url, backend_name,
             merge_id||'_'||merge_commit||' '||merge_date
         FROM merge_request
@@ -423,11 +452,11 @@ def apps_map(format_):
 
     map_entries = []
     backend_done = []
-    for url, backend, comment in cr.fetchall():
+    for project, url, backend, comment in cr.fetchall():
         if backend not in backend_done:
             if format_ == 'ports':
                 ref = url.replace(
-                    '.' + app.config['provision_test_url_suffix'],
+                    '.' + get_provision_param(project, 'test_url_suffix'),
                     ''
                 )
                 backend_port = int(backend.split('_')[-1:][0])
@@ -444,10 +473,18 @@ def apps_map(format_):
 
 @app.route(PATH_UPDATE_APPS_MAP, methods=['GET'])
 def update_apps_map(db_name):
+    cr, conn = get_cursor(app.config['db_ci_ref_db'])
+    cr.exectute('''
+        SELECT
+            project,
+        FROM merge_request
+        WHERE merge_id||'_'||merge_commit=%s
+    ''', (db_name,))
+    project = cr.fetchone()
 
     ref_name = request.args.get('ref_name')
     test_url = '%s.%s' % (
-        ref_name, app.config['provision_test_url_suffix']
+        ref_name, get_provision_param(project, 'test_url_suffix')
     )
 
     def get_fifo_backend(elements, new_merge_id):
@@ -469,18 +506,18 @@ def update_apps_map(db_name):
                 merge_already_tested = True
 
         if merge_already_tested or \
-                q.qsize() >= app.config['provision_max_test_backend']:
+                q.qsize() >= get_provision_param(project, 'max_test_backend'):
             # evict the oldest backend
             last_backend = q.get()
             last_backend_name = last_backend.backend_name
             last_backend_id = last_backend.id
         else:
             # search the first free backend
-            max_backend = app.config['provision_max_test_backend']
+            max_backend = get_provision_param(project, 'max_test_backend')
             for backend_num in range(1, max_backend + 1):
                 name = '%s%i' % (
-                    app.config['provision_test_backend_prefix'],
-                    app.config['provision_test_backend_base_port'] +
+                    get_provision_param(project, 'test_backend_prefix'),
+                    get_provision_param(project, 'test_backend_base_port') +
                     backend_num
                 )
 
@@ -629,7 +666,7 @@ def get_db(commit):
         conn = None
         cr, conn = get_cursor(app.config['db_ci_ref_db'])
         cr.execute('''
-            SELECT merge_id, merge_commit, merge_test_url
+            SELECT merge_id, merge_commit, merge_test_url, project
             FROM merge_request WHERE merge_commit=%s
         ''', (commit,))
         rows = cr.fetchall()
@@ -638,33 +675,41 @@ def get_db(commit):
 
         db = '%i_%s' % (rows[0][0], rows[0][1])
         test_url = rows[0][2]
+        project = rows[0][3]
 
         wait_db(db)
 
         result = []
         result.append('DB_NAME=' + db)
-        if app.config['provision_host']:
+
+        db_host = get_provision_param(project, 'host')
+        if db_host:
             result.append(
-                'DB_HOST=' + app.config['provision_host']
+                'DB_HOST=' + db_host
             )
-        if app.config['provision_port']:
+
+        provision_port = get_provision_param(project, 'port')
+        if provision_port:
             result.append(
-                'DB_PORT=' + app.config['provision_port']
+                'DB_PORT=' + provision_port
             )
-        if app.config['provision_user']:
+
+        provision_user = get_provision_param(project, 'user')
+        if provision_user:
             result.append(
-                'DB_USER=' + app.config['provision_user']
+                'DB_USER=' + provision_user
             )
-        if app.config['provision_password']:
+
+        provision_password = get_provision_param(project, 'password')
+        if provision_password:
             result.append(
-                'DB_PASSWORD=' + app.config['provision_password']
+                'DB_PASSWORD=' + provision_password
             )
         # test env
         result.append('VIRTUAL_HOST=' + test_url)
 
         return ' '.join(result)
     except Exception:
-        raise
         return invalid_pr
     finally:
         if conn:
