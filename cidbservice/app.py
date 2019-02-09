@@ -141,7 +141,7 @@ def init():
 
     def get_section(project):
         section = 'provision'
-        if section:
+        if project:
             section += '_%s' % project
         return section
 
@@ -169,8 +169,15 @@ def init():
             'template_prefix',
         ]
         for key in provision_str_key:
-            app.config[get_key(section, key)] = \
-                config.get(section, key)
+	    val = ''
+	    try:
+		val = config.get(section, key)
+	    except ValueError:
+		app.logger.warn(
+		  'invalid str config param "%s", section "%s"' % (
+		  key, section)
+		)
+	    app.config[get_key(section, key)] = val
 
         provision_int_key = [
             'spare_pool',
@@ -178,8 +185,15 @@ def init():
             'test_backend_base_port',
         ]
         for key in provision_int_key:
-            app.config[get_key(section, key)] = \
-                config.getint(section, key)
+	    val = 0
+	    try:
+		val = config.getint(section, key)
+	    except ValueError:
+		app.logger.warn(
+		  'invalid int config param "%s", section "%s"' % (
+		  key, section
+		))
+	    app.config[get_key(section, key)] = val
 
     setup_service()
 
