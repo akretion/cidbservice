@@ -10,8 +10,5 @@ setup(
     packages = find_packages(),
     license = 'AGPL',
     install_requires = [
-	'Flask',
-	'psycopg2',
-	'configparser',
-    ]
+        r.strip() for r in open('requirements.txt').read().splitlines() ],
 )

@@ -653,6 +653,23 @@ def wait_db(db_name):
             conn.close()
 
 
+def create_demo_db(db):
+    try:
+        conn = None
+        cr, conn = get_cursor(app.config['db_template'])
+        cr.execute('DROP DATABASE IF EXISTS "%s";', (AsIs(db),))
+        cr.execute('CREATE DATABASE "%s" WITH OWNER "%s";', (
+            AsIs(db), AsIs(app.config['db_user'])
+        ))
+    except psycopg2.ProgrammingError:
+        app.logger.info(
+            'Impossible to create "%s" (maybe already exists)' % db
+        )
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.route(PATH_GET_DB, methods=['GET'])
 def get_db(commit):
     result = None
@@ -674,13 +691,14 @@ def get_db(commit):
             return invalid_pr
 
         db = '%i_%s' % (rows[0][0], rows[0][1])
+        db_test = '%s_test' % db
         test_url = rows[0][2]
         project = rows[0][3]
 
         wait_db(db)
+        create_demo_db(db_test)
 
-        result = []
-        result.append('DB_NAME=' + db)
+        result = ['DB_NAME=' + db, 'DB_TEST_NAME=' + db_test]
 
         db_host = get_provision_param(project, 'host')
         if db_host:
