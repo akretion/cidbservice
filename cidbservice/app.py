@@ -48,9 +48,7 @@ def get_priority(merge_id, new_merge_id, count, max_priority=1000):
 
 
 def get_provision_param(project, key):
-    project_param = app.config['provision_%s_%s' % (project, key)]
-    default_param = app.config['provision_%s' % key]
-    return project_param or default_param
+    return app.config['provision_%s_%s' % (project, key)]
 
 celery = Celery(
     'cidbservice',
@@ -132,12 +130,10 @@ def init():
     projects = ['']
     try:
         projects.extend([
-            p.strip() for p in config.get('provision', 'projects').split('')
+            p.strip() for p in config.get('provision', 'projects').split(',')
         ])
     except ValueError:
         pass
-
-    projects.append('')
 
     def get_section(project):
         section = 'provision'
@@ -169,10 +165,10 @@ def init():
             'template_prefix',
         ]
         for key in provision_str_key:
-	    val = ''
+	    val = config.get('provision', key)
 	    try:
 		val = config.get(section, key)
-	    except ValueError:
+	    except configparser.NoOptionError:
 		app.logger.warn(
 		  'invalid str config param "%s", section "%s"' % (
 		  key, section)
@@ -185,10 +181,10 @@ def init():
             'test_backend_base_port',
         ]
         for key in provision_int_key:
-	    val = 0
+	    val = config.get('provision', key)
 	    try:
 		val = config.getint(section, key)
-	    except ValueError:
+	    except configparser.NoOptionError:
 		app.logger.warn(
 		  'invalid int config param "%s", section "%s"' % (
 		  key, section
@@ -369,8 +365,8 @@ def add_db():
                     else:
                         spare_number = int(spare_create(cr, project_name))
 
-                    db_spare = '%s_%02i' % (
-                        get_provision_param('spare_prefix') + project_name,
+                    db_spare = '%s%02i' % (
+                        get_provision_param(project_name, 'spare_prefix'),
                         spare_number,
                     )
                     cr.execute('''
