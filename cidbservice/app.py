@@ -16,7 +16,7 @@ CONFIG_FILE = '/etc/cidbservice.conf'
 PATH_ADD_DB = '/add_db'
 PATH_GET_DB = '/get_db/<commit>'
 PATH_REFRESH_DB = '/refresh_db/<project_name>'
-PATH_DROP_DB = '/drop_db/<db_name>'
+PATH_DROP_DB = '/drop_db/<project_name>/<db_name>'
 PATH_APPS_MAP = '/apps_map/<format_>'
 PATH_UPDATE_APPS_MAP = '/update_apps_map/<db_name>'
 
@@ -181,7 +181,7 @@ def init():
             'test_backend_base_port',
         ]
         for key in provision_int_key:
-	    val = config.get('provision', key)
+	    val = config.getint('provision', key)
 	    try:
 		val = config.getint(section, key)
 	    except configparser.NoOptionError:
@@ -217,9 +217,9 @@ def before_request():
         abort(403)
 
 
-def spare_last_number(cr, project_name):
+def spare_last_number(cr, spare_prefix):
     spare_last_number = 0
-    prefix = 'spare_%s_%%' % project_name
+    prefix = '%s_%%' % spare_prefix
     cr.execute('''
          SELECT max(datname) FROM pg_database where
          datname like %s
@@ -240,10 +240,9 @@ def spare_create(cr, project_name, spare_prefix=None,
     if not template_prefix:
         template_prefix = get_provision_param(project_name, 'template_prefix')
 
-    spare_number = int(spare_last_number(cr, project_name)) + 1
-    spare_db = '%s%s_%02i' % (
+    spare_number = int(spare_last_number(cr, spare_prefix)) + 1
+    spare_db = '%s%02i' % (
         spare_prefix,
-        project_name,
         spare_number,
     )
     app.logger.info('create spare database "%s"' % spare_db)
@@ -266,12 +265,10 @@ def spare_pool_task(project_name, params):
     spare_prefix = params['spare_prefix']
     template_user = params['template_user']
     template_prefix = params['template_prefix']
-
     try:
         conn = None
-
-        def spare_count(cr, project_name):
-            prefix = 'spare_%s%%' % project_name
+        def spare_count(cr):
+            prefix = '%s%%' % spare_prefix
             cr.execute('''
                 SELECT count(*) from  pg_database where
                 datname like %s
@@ -286,7 +283,7 @@ def spare_pool_task(project_name, params):
                 db_port=db_port,
                 db_user=db_user,
             )
-            count = spare_count(cr, project_name)
+            count = spare_count(cr)
             if count >= spare_pool:
                 app.logger.info('spare pool ok for %s (%i/%i)' % (
                     project_name, count, spare_pool
@@ -359,14 +356,15 @@ def add_db():
                         DROP DATABASE IF EXISTS "%s";
                     ''', (AsIs(db_name),))
 
-                    last_number = spare_last_number(cr, project_name)
+                    spare_prefix = get_provision_param(project_name, 'spare_prefix')
+                    last_number = spare_last_number(cr, spare_prefix)
                     if last_number:
                         spare_number = int(last_number)
                     else:
                         spare_number = int(spare_create(cr, project_name))
 
                     db_spare = '%s%02i' % (
-                        get_provision_param(project_name, 'spare_prefix'),
+                        spare_prefix,
                         spare_number,
                     )
                     cr.execute('''
@@ -406,9 +404,8 @@ def refresh_task(project_name, params):
     try:
         conn = None
         template_prefix = params['spare_prefix']
-        prefix = '%s%s_%%' % (
+        prefix = '%s_%%' % (
             template_prefix,
-            project_name,
         )
 
         cr, conn = get_cursor(
@@ -443,7 +440,7 @@ def refresh_db(project_name):
     app.logger.info('triggering refeshing spare databases "%s" project' % (
         project_name
     ))
-    params = get_celery_params(app)
+    params = get_celery_params(app, project_name)
     return '%s\n' % str(refresh_task.delay(project_name, params))
 
 
@@ -597,7 +594,7 @@ def update_apps_map(db_name):
 def drop_task(db_name, params):
     try:
         conn = None
-        merge_id, merge_commit = db_name.split('_')
+        merge_id, merge_commit = db_name.split('_', 1)
         merge_id = int(merge_id)
         if merge_id and merge_commit:
             cr, conn = get_cursor(
@@ -637,9 +634,9 @@ def drop_task(db_name, params):
 
 
 @app.route(PATH_DROP_DB, methods=['GET'])
-def drop_db(db_name):
+def drop_db(project_name, db_name):
     app.logger.info('triggering drop database "%s"' % db_name)
-    params = get_celery_params(app)
+    params = get_celery_params(app, project_name)
     return '%s\n' % str(drop_task.delay(db_name, params))
 
 
@@ -663,13 +660,13 @@ def wait_db(db_name):
             conn.close()
 
 
-def create_demo_db(db):
+def create_demo_db(db, project):
     try:
         conn = None
         cr, conn = get_cursor(app.config['db_template'])
         cr.execute('DROP DATABASE IF EXISTS "%s";', (AsIs(db),))
         cr.execute('CREATE DATABASE "%s" WITH OWNER "%s";', (
-            AsIs(db), AsIs(app.config['db_user'])
+            AsIs(db), AsIs(get_provision_param(project, 'user'))
         ))
     except psycopg2.ProgrammingError:
         app.logger.info(
@@ -706,8 +703,7 @@ def get_db(commit):
         project = rows[0][3]
 
         wait_db(db)
-        create_demo_db(db_test)
-
+        create_demo_db(db_test, project)
         result = ['DB_NAME=' + db, 'DB_TEST_NAME=' + db_test]
 
         db_host = get_provision_param(project, 'host')
