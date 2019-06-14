@@ -1,5 +1,6 @@
 # /usr/bin/env python2
 import json
+import sys
 
 import psycopg2
 import requests
@@ -21,6 +22,7 @@ PATH_UPDATE_APPS_MAP = '/update_apps_map/<db_name>'
 
 
 app = Flask(__name__)
+app.config['init_done'] = False
 config = configparser.ConfigParser()
 config.read(CONFIG_FILE)
 
@@ -195,6 +197,7 @@ def init():
 	    app.logger.error("config %s = %s" % (get_key(section, key), val))
 	    app.config[get_key(section, key)] = val
 
+    app.config['init_done'] = True
     setup_service()
 
 
@@ -533,7 +536,7 @@ def update_apps_map(db_name):
             for backend_num in range(1, max_backend + 1):
                 name = '%s%i' % (
                     get_provision_param(project, 'test_backend_prefix'),
-                    get_provision_param(project, 'test_backend_base_port') +
+                    get_provision_param(project, 'test_backend_base_port')
                     backend_num
                 )
 
@@ -754,4 +757,5 @@ def get_db(commit):
 def create_app():
     return app
 
-init()
+if not app.config.get('init_done'):
+    init()

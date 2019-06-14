@@ -12,13 +12,14 @@ services:
       GUNICORN_WORKERS: 5
       GUNICORN_TIMEOUT: 3600
     volumes:
-      - ./cidbservice.conf:/etc/cidbservice.conf
+      - /etc/cidbservice.conf:/etc/cidbservice.conf
       - /var/run/postgresql/:/var/run/postgresql/
-    expose:
-      - "54320"
+    ports:
+      - "54320:54320"
     restart: always
     links:
       - rabbitmq
+      - celery
     labels:
       - "traefik.enabled=true"
       - "traefik.backend=cidbservice"
@@ -33,10 +34,14 @@ services:
       POSTGRES_GROUP: postgres
       SERVICE_HOST: 0.0.0.0
       SERVICE_PORT: 54320
+#     CELERY_RDB_PORT: 6900
+#     CELERY_RDB_HOST: 0.0.0.0
     volumes:
-      - ./cidbservice.conf:/etc/cidbservice.conf
+      - /etc/cidbservice.conf:/etc/cidbservice.conf
       - /var/run/postgresql/:/var/run/postgresql/
     restart: always
+#   ports:
+#     - "0.0.0.0:6900-6999:6900-6999"
   rabbitmq:
     image: rabbitmq:3-management
     ports:
