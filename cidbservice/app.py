@@ -1,5 +1,4 @@
 # /usr/bin/env python2
-
 import json
 
 import psycopg2
@@ -48,13 +47,17 @@ def get_priority(merge_id, new_merge_id, count, max_priority=1000):
 
 
 def get_provision_param(project, key):
-    return app.config['provision_%s_%s' % (project, key)]
+
+    try:
+        return app.config['provision_%s_%s' % (project, key)]
+    except:
+        app.logger.error("can't find value for the key %s for the project %s" % (key, project))
+        app.logger.error(app.config.get_namespace('provision_'))
 
 celery = Celery(
     'cidbservice',
-    broker=config.get('celery', 'broker'),
+    broker=config.get('celery', 'broker')
 )
-
 
 def get_cursor(database, db_host=None, db_user=None,
                db_port=None, autocommit=True):
@@ -104,18 +107,16 @@ def setup_service():
         app.logger.critical(
             'Impossible to create "merge_request" table'
         )
-        raise
     finally:
         if conn:
             conn.close()
-
 
 @app.before_first_request
 def init():
 
     # service
     app.config['service_token'] = config.get('service', 'token')
-    app.config['service_ci_label'] = config.get('service', 'ci_label')
+    app.config['service_ci_label'] = config.get('service', 'ci_label').lower()
     # runner
     app.config['runner_token'] = config.get('runner', 'token')
     app.config['runner_trigger_url'] = config.get('runner', 'trigger_url')
@@ -173,6 +174,7 @@ def init():
 		  'invalid str config param "%s", section "%s"' % (
 		  key, section)
 		)
+	    app.logger.error("config %s = %s" % (get_key(section, key), val))
 	    app.config[get_key(section, key)] = val
 
         provision_int_key = [
@@ -182,13 +184,15 @@ def init():
         ]
         for key in provision_int_key:
 	    val = config.getint('provision', key)
+	    app.logger.error('key "%s" "%s" "%s"' % ('provision', key, val))
 	    try:
 		val = config.getint(section, key)
-	    except configparser.NoOptionError:
+	    except:
 		app.logger.warn(
 		  'invalid int config param "%s", section "%s"' % (
 		  key, section
 		))
+	    app.logger.error("config %s = %s" % (get_key(section, key), val))
 	    app.config[get_key(section, key)] = val
 
     setup_service()
@@ -204,7 +208,8 @@ def get_celery_params(app, project):
         'ci_ref_db': app.config['db_ci_ref_db'],
         'spare_prefix': get_provision_param(project, 'spare_prefix'),
         'template_user': get_provision_param(project, 'template_user'),
-        'template_prefix': get_provision_param(project, 'template_prefix')
+        'template_prefix': get_provision_param(project, 'template_prefix'),
+        'user': get_provision_param(project, 'user'),
     }
 
 
@@ -214,7 +219,7 @@ def before_request():
     gitlab_token = request.headers.get('X-Gitlab-Token')
     if not token or gitlab_token != token:
         app.logger.error('invalid X-Gitlab-Token')
-        abort(403)
+        abort(404)
 
 
 def spare_last_number(cr, spare_prefix):
@@ -231,7 +236,7 @@ def spare_last_number(cr, spare_prefix):
 
 
 def spare_create(cr, project_name, spare_prefix=None,
-                 template_user=None, template_prefix=None):
+                 template_user=None, template_prefix=None, user=None):
 
     if not spare_prefix:
         spare_prefix = get_provision_param(project_name, 'spare_prefix')
@@ -239,6 +244,8 @@ def spare_create(cr, project_name, spare_prefix=None,
         template_user = get_provision_param(project_name, 'template_user')
     if not template_prefix:
         template_prefix = get_provision_param(project_name, 'template_prefix')
+    if not user:
+        user = get_provision_param(project_name, 'user')
 
     spare_number = int(spare_last_number(cr, spare_prefix)) + 1
     spare_db = '%s%02i' % (
@@ -248,9 +255,11 @@ def spare_create(cr, project_name, spare_prefix=None,
     app.logger.info('create spare database "%s"' % spare_db)
     cr.execute('CREATE DATABASE "%s" WITH OWNER "%s" TEMPLATE "%s";', (
         AsIs(spare_db),
-        AsIs(template_user),
+        AsIs(user),
         AsIs(template_prefix + project_name),
     ))
+
+    app.logger.info('%s %s %s %s' % (spare_db, user, template_prefix, project_name))
     return spare_number
 
 
@@ -265,6 +274,7 @@ def spare_pool_task(project_name, params):
     spare_prefix = params['spare_prefix']
     template_user = params['template_user']
     template_prefix = params['template_prefix']
+    user = params['user']
     try:
         conn = None
         def spare_count(cr):
@@ -294,7 +304,7 @@ def spare_pool_task(project_name, params):
                     cr,
                     project_name,
                     spare_prefix,
-                    template_user,
+                    user,
                     template_prefix,
                 )
     except Exception:
@@ -319,7 +329,7 @@ def add_db():
             merge_id = attributes['iid']
             merge_commit = attributes['last_commit']['id']
             source_branch = attributes['source_branch']
-            test_url = '%s.%s' % (
+            test_url = '%s-%s' % (
                 source_branch,
                 get_provision_param(project_name, 'test_url_suffix')
             )
@@ -340,7 +350,6 @@ def add_db():
                 test_url,
                 project_name
             ))
-
             try:
                 conn = None
                 cr, conn = get_cursor(app.config['db_template'])
@@ -386,7 +395,6 @@ def add_db():
                 requests.post(trigger_url, data=data)
 
             except Exception:
-                raise
                 abort(500)
             finally:
                 if conn:
@@ -434,12 +442,13 @@ def refresh_task(project_name, params):
         if conn:
             conn.close()
 
-
 @app.route(PATH_REFRESH_DB, methods=['GET'])
 def refresh_db(project_name):
-    app.logger.info('triggering refeshing spare databases "%s" project' % (
-        project_name
+    app.logger.info('triggering refeshing spare databases "%s" project: ' % (
+        project_name,
     ))
+    app.logger.info(repr(app.config))
+    app.logger.info(repr(project_name))
     params = get_celery_params(app, project_name)
     return '%s\n' % str(refresh_task.delay(project_name, params))
 
@@ -463,7 +472,7 @@ def apps_map(format_):
         if backend not in backend_done:
             if format_ == 'ports':
                 ref = url.replace(
-                    '.' + get_provision_param(project, 'test_url_suffix'),
+                    '-' + get_provision_param(project, 'test_url_suffix'),
                     ''
                 )
                 backend_port = int(backend.split('_')[-1:][0])
@@ -490,7 +499,7 @@ def update_apps_map(db_name):
     project = cr.fetchone()
 
     ref_name = request.args.get('ref_name')
-    test_url = '%s.%s' % (
+    test_url = '%s-%s' % (
         ref_name, get_provision_param(project, 'test_url_suffix')
     )
 
@@ -586,7 +595,6 @@ def update_apps_map(db_name):
             merge_id=%s merge_commit=%s for provision
         ''' % (merge_id, merge_commit))
         cr.execute('ROLLBACK')
-        raise
         return 'KO'
 
 
@@ -594,8 +602,10 @@ def update_apps_map(db_name):
 def drop_task(db_name, params):
     try:
         conn = None
+
         merge_id, merge_commit = db_name.split('_', 1)
         merge_id = int(merge_id)
+
         if merge_id and merge_commit:
             cr, conn = get_cursor(
                 params['ci_ref_db'],
@@ -624,7 +634,6 @@ def drop_task(db_name, params):
                 (AsIs(db_name),)
             )
     except:
-        raise
         app.logger.error('error droping database "%s" project' % (
             db_name
         ))
@@ -744,3 +753,5 @@ def get_db(commit):
 
 def create_app():
     return app
+
+init()

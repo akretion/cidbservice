@@ -14,11 +14,17 @@ services:
     volumes:
       - ./cidbservice.conf:/etc/cidbservice.conf
       - /var/run/postgresql/:/var/run/postgresql/
-    ports:
-      - "54320:54320"
+    expose:
+      - "54320"
     restart: always
     links:
       - rabbitmq
+    labels:
+      - "traefik.enabled=true"
+      - "traefik.backend=cidbservice"
+      - "traefik.frontend.rule=Host:db.ci-akretion.com"
+      - "traefik.port=54320"
+
   celery:
     build: .
     entrypoint: /usr/local/bin/docker-celery.sh
