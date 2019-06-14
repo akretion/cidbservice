@@ -1,6 +1,5 @@
 # /usr/bin/env python2
 import json
-import sys
 
 import psycopg2
 import requests
@@ -53,13 +52,17 @@ def get_provision_param(project, key):
     try:
         return app.config['provision_%s_%s' % (project, key)]
     except:
-        app.logger.error("can't find value for the key %s for the project %s" % (key, project))
+        app.logger.error(
+            "can't find value for the key %s for the project %s" %
+            (key, project)
+        )
         app.logger.error(app.config.get_namespace('provision_'))
 
 celery = Celery(
     'cidbservice',
     broker=config.get('celery', 'broker')
 )
+
 
 def get_cursor(database, db_host=None, db_user=None,
                db_port=None, autocommit=True):
@@ -112,6 +115,7 @@ def setup_service():
     finally:
         if conn:
             conn.close()
+
 
 @app.before_first_request
 def init():
@@ -168,16 +172,16 @@ def init():
             'template_prefix',
         ]
         for key in provision_str_key:
-	    val = config.get('provision', key)
-	    try:
-		val = config.get(section, key)
-	    except configparser.NoOptionError:
-		app.logger.warn(
-		  'invalid str config param "%s", section "%s"' % (
-		  key, section)
-		)
-	    app.logger.error("config %s = %s" % (get_key(section, key), val))
-	    app.config[get_key(section, key)] = val
+            val = config.get('provision', key)
+            try:
+                val = config.get(section, key)
+            except configparser.NoOptionError:
+                app.logger.warn(
+                  'invalid str config param "%s", section "%s"' %
+                  (key, section)
+                )
+            app.logger.error("config %s = %s" % (get_key(section, key), val))
+            app.config[get_key(section, key)] = val
 
         provision_int_key = [
             'spare_pool',
@@ -185,17 +189,17 @@ def init():
             'test_backend_base_port',
         ]
         for key in provision_int_key:
-	    val = config.getint('provision', key)
-	    app.logger.error('key "%s" "%s" "%s"' % ('provision', key, val))
-	    try:
-		val = config.getint(section, key)
-	    except:
-		app.logger.warn(
-		  'invalid int config param "%s", section "%s"' % (
-		  key, section
-		))
-	    app.logger.error("config %s = %s" % (get_key(section, key), val))
-	    app.config[get_key(section, key)] = val
+            val = config.getint('provision', key)
+            app.logger.error('key "%s" "%s" "%s"' % ('provision', key, val))
+            try:
+                val = config.getint(section, key)
+            except:
+                app.logger.warn(
+                  'invalid int config param "%s", section "%s"' %
+                  (key, section)
+                )
+            app.logger.error("config %s = %s" % (get_key(section, key), val))
+            app.config[get_key(section, key)] = val
 
     app.config['init_done'] = True
     setup_service()
@@ -262,7 +266,9 @@ def spare_create(cr, project_name, spare_prefix=None,
         AsIs(template_prefix + project_name),
     ))
 
-    app.logger.info('%s %s %s %s' % (spare_db, user, template_prefix, project_name))
+    app.logger.info('%s %s %s %s' % (
+        spare_db, user, template_prefix, project_name)
+    )
     return spare_number
 
 
@@ -275,11 +281,11 @@ def spare_pool_task(project_name, params):
     db_port = params['db_port']
     db_user = params['db_user']
     spare_prefix = params['spare_prefix']
-    template_user = params['template_user']
     template_prefix = params['template_prefix']
     user = params['user']
     try:
         conn = None
+
         def spare_count(cr):
             prefix = '%s%%' % spare_prefix
             cr.execute('''
@@ -325,7 +331,7 @@ def add_db():
     attributes = merge_request['object_attributes']
     state = attributes['state']
     for label in merge_request.get('labels', []):
-        if label['title'] == app.config['service_ci_label'] \
+        if label['title'].lower() == app.config['service_ci_label'] \
                 and state == 'opened':
             project_name = merge_request['project']['name']
             project_id = merge_request['project']['id']
@@ -368,7 +374,9 @@ def add_db():
                         DROP DATABASE IF EXISTS "%s";
                     ''', (AsIs(db_name),))
 
-                    spare_prefix = get_provision_param(project_name, 'spare_prefix')
+                    spare_prefix = get_provision_param(
+                        project_name, 'spare_prefix'
+                    )
                     last_number = spare_last_number(cr, spare_prefix)
                     if last_number:
                         spare_number = int(last_number)
@@ -444,6 +452,7 @@ def refresh_task(project_name, params):
     finally:
         if conn:
             conn.close()
+
 
 @app.route(PATH_REFRESH_DB, methods=['GET'])
 def refresh_db(project_name):
@@ -536,7 +545,7 @@ def update_apps_map(db_name):
             for backend_num in range(1, max_backend + 1):
                 name = '%s%i' % (
                     get_provision_param(project, 'test_backend_prefix'),
-                    get_provision_param(project, 'test_backend_base_port')
+                    get_provision_param(project, 'test_backend_base_port'),
                     backend_num
                 )
 
