@@ -80,7 +80,7 @@ docker-compose logs -f celery
 
 Quand le code arrive sur ces ligne il apparaît dans les instructions pour se connecter au remote debugger
 Example:
-``̀
+```
 Remote Debugger:6904: Ready to connect: telnet 0.0.0.0 6904
 ```
 
