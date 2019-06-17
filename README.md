@@ -54,7 +54,7 @@ docker-compose run --service-ports cidbservice bash
 Une fois le service lancé dans la console
 ```
 flask run --host 0.0.0.0 -p 54320
-``
+```
 
 ### Pour debbuger celery:
 
