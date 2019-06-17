@@ -57,12 +57,16 @@ Le debug est plus compliqué car aucun shell interactif est disponible
 il faut utiliser un remote pdb:
 Le port de debug est variable est exposé par une plage 6900-6999 dans le fichier docker-compose.yml
 ainsi que les variable d'environement:
+```
 CELERY_RDB_HOST=0.0.0.0
 CELERY_RDB_PORT=6900
+```
 
 Pour avoir le remote debug il faut insérer dans le code à examiner les lignes:
+```
 from celery.contrib import rdb
 rdb.set_trace()
+```
 
 Il faut ensuite regarder les logs docker-compose de l'application
 docker-compose logs -f celery
