@@ -4,9 +4,14 @@ import requests
 from retrying import retry
 from psycopg2.extensions import AsIs
 from flask import abort
-
+from ..task import refresh_task
 
 class DbService(object):
+
+    def __init__(self, logger, config):
+        super(DbService, self).__init__()
+        self.config = config
+        self.logger = logger
 
     def get_provision_param(self, project, key):
 
@@ -32,47 +37,6 @@ class DbService(object):
             'template_prefix': get_provision_param(project, 'template_prefix'),
             'user': get_provision_param(project, 'user'),
         }
-
-    def spare_last_number(self, cr, spare_prefix):
-        spare_last_number = 0
-        prefix = '%s_%%' % spare_prefix
-        cr.execute('''
-             SELECT max(datname) FROM pg_database where
-             datname like %s
-        ''', (prefix, ))
-        res = cr.fetchall()
-        if res[0][0]:
-            _, _, spare_last_number = res[0][0].split('_')
-        return spare_last_number
-
-    def spare_create(self, cr, project_name, spare_prefix=None,
-                     template_user=None, template_prefix=None, user=None):
-
-        if not spare_prefix:
-            spare_prefix = get_provision_param(project_name, 'spare_prefix')
-        if not template_user:
-            template_user = get_provision_param(project_name, 'template_user')
-        if not template_prefix:
-            template_prefix = get_provision_param(project_name, 'template_prefix')
-        if not user:
-            user = get_provision_param(project_name, 'user')
-
-        spare_number = int(spare_last_number(cr, spare_prefix)) + 1
-        spare_db = '%s%02i' % (
-            spare_prefix,
-            spare_number,
-        )
-        app.logger.info('create spare database "%s"' % spare_db)
-        cr.execute('CREATE DATABASE "%s" WITH OWNER "%s" TEMPLATE "%s";', (
-            AsIs(spare_db),
-            AsIs(user),
-            AsIs(template_prefix + project_name),
-        ))
-
-        app.logger.info('%s %s %s %s' % (
-            spare_db, user, template_prefix, project_name)
-        )
-        return spare_number
 
     def add_db(self):
         """ Webhook for gitlab CI.
@@ -171,14 +135,12 @@ class DbService(object):
 
         return db_name
 
-    def refresh_db(self, project_name):
-        app.logger.info('triggering refeshing spare databases "%s" project: ' % (
+    def refresh(self, project_name):
+        self.logger.info(
+            "triggering refeshing spare databases '%s' project: " % (
             project_name,
         ))
-        app.logger.info(repr(app.config))
-        app.logger.info(repr(project_name))
-        params = get_celery_params(app, project_name)
-        return '%s\n' % str(refresh_task.delay(project_name, params))
+        return '%s\n' % str(refresh_task.delay(project_name))
 
     def drop_db(self, project_name, db_name):
         app.logger.info('triggering drop database "%s"' % db_name)

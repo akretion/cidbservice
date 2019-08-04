@@ -1,99 +1,101 @@
 # -*- coding: utf-8 -*-
 
+from .tools import config, get_cursor
 from celery import Celery
 from psycopg2.extensions import AsIs
+from celery.contrib import rdb
+from celery.utils.log import get_task_logger
 
+logger = get_task_logger(__name__)
 
 celery = Celery(
     'cidbservice',
-    broker=config.get('celery', 'broker')
-)
+    broker=config['celery']['broker'])
+
+
+def get_spare_prefix(project_name):
+    return '%s_spare_' % project_name
+
+def get_template_name(project_name):
+    return '%s_template' % project_name
+
+def spare_count(cr, project_name):
+    spare_prefix = get_spare_prefix(project_name)
+    prefix = '%s%%' % spare_prefix
+    cr.execute('''
+        SELECT count(*) from  pg_database where
+        datname like %s
+    ''', (prefix,))
+    return cr.fetchall()[0][0]
+
+def spare_last_number(cr, spare_prefix):
+    spare_last_number = 0
+    prefix = '%s_%%' % spare_prefix
+    cr.execute('''
+         SELECT max(datname) FROM pg_database where
+         datname like %s
+    ''', (prefix, ))
+    res = cr.fetchall()
+    if res[0][0]:
+        _, _, spare_last_number = res[0][0].split('_')
+    return spare_last_number
+
+def spare_create(cr, project_name):
+    spare_prefix = get_spare_prefix(project_name)
+    spare_number = int(spare_last_number(cr, spare_prefix)) + 1
+    spare_db = '%s%02i' % (spare_prefix, spare_number)
+    user = config['projects'][project_name]['user']
+    template = '%s_template' % project_name
+    logger.info('create spare database "%s"' % spare_db)
+    cr.execute(
+        'CREATE DATABASE "%s" WITH OWNER "%s" TEMPLATE "%s";', (
+        AsIs(spare_db),
+        AsIs(user),
+        AsIs(template),
+    ))
+
+    logger.info('DATABASE CREATED name: %s, user: %s, template: %s' % (
+        spare_db, user, template)
+    )
+    return spare_number
+
 
 @celery.task
-def spare_pool_task(project_name, params):
-
-    spare_pool = params['spare_pool']
-    db_template = params['db_template']
-    db_host = params['db_host']
-    db_port = params['db_port']
-    db_user = params['db_user']
-    spare_prefix = params['spare_prefix']
-    template_prefix = params['template_prefix']
-    user = params['user']
-    try:
-        conn = None
-
-        def spare_count(cr):
-            prefix = '%s%%' % spare_prefix
-            cr.execute('''
-                SELECT count(*) from  pg_database where
-                datname like %s
-            ''', (prefix,))
-            res = cr.fetchall()
-            return res[0][0]
-
+def spare_pool_task(project_name):
+    with get_cursor() as cr:
+        spare_prefix = '%s_spare' % project_name
+        spare_pool = config['projects'][project_name]['spare_pool']
+        import pdb; pdb.set_trace()
         while True:
-            cr, conn = get_cursor(
-                db_template,
-                db_host=db_host,
-                db_port=db_port,
-                db_user=db_user,
-            )
-            count = spare_count(cr)
+            count = spare_count(cr, project_name)
             if count >= spare_pool:
                 app.logger.info('spare pool ok for %s (%i/%i)' % (
                     project_name, count, spare_pool
                 ))
                 break
             else:
-                spare_create(
-                    cr,
-                    project_name,
-                    spare_prefix,
-                    user,
-                    template_prefix,
-                )
-    except Exception:
-        pass
-    finally:
-        if conn:
-            conn.close()
+                spare_create(cr, project_name)
 
 
 @celery.task
-def refresh_task(project_name, params):
-    try:
-        conn = None
-        template_prefix = params['spare_prefix']
-        prefix = '%s_%%' % (
-            template_prefix,
-        )
-
-        cr, conn = get_cursor(
-            params['db_template'],
-            db_host=params['db_host'],
-            db_port=params['db_port'],
-            db_user=params['db_user'],
-        )
+def refresh_task(project_name):
+    with get_cursor() as cr:
+        prefix = get_spare_prefix(project_name)
         cr.execute('''
             SELECT datname FROM pg_database
             WHERE datname like %s
         ''', (prefix,))
         res = cr.fetchall()
-        for r in res:
-            datname = r[0]
-            app.logger.info('drop spare database "%s"' % datname)
-            cr.execute('DROP DATABASE IF EXISTS "%s"', (AsIs(datname),))
-
-        spare_pool_task.delay(project_name, params)
-
-    except:
-        app.logger.error('error deleting spare databases "%s" project' % (
-            project_name
-        ))
-    finally:
-        if conn:
-            conn.close()
+        try:
+            for r in res:
+                datname = r[0]
+                _logger.info('drop spare database "%s"' % datname)
+                cr.execute('DROP DATABASE IF EXISTS "%s"', (AsIs(datname),))
+            spare_pool_task.delay(project_name)
+        except:
+            _logger.error('error deleting spare databases "%s" project' % (
+                project_name
+            ))
 
 
 @celery.task

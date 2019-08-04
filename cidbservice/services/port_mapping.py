@@ -18,6 +18,10 @@ class Backend(object):
 
 class PortMappingService(object):
 
+    def __init__(self, config):
+        super(PortMappingService, self).__init__()
+        self.config = config
+
     def get_priority(merge_id, new_merge_id, count, max_priority=1000):
         if merge_id == new_merge_id:
             return max_priority

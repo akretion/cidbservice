@@ -7,7 +7,7 @@ First you need to add a Gitlab Webook, for the merge request (MR) events since t
 To add this webhook got in the project settings add choose the `Integration` submenu
 - enter a full URL to access the remote CI DB service (example: https://example.com:8433)
 - enter the token string (use only letters and digits) of the CI DB service, which must be also configure in the cidbservice.conf on the CI DB service host in the `service` section with the key `token`
-- select only the checkbox "merge requests event" 
+- select only the checkbox "merge requests event"
 
 Documentation on Gitlab webhooks: https://docs.gitlab.com/ce/user/project/integrations/webhooks.html
 
@@ -85,3 +85,17 @@ Remote Debugger:6904: Ready to connect: telnet 0.0.0.0 6904
 ```
 
 Il faut se connecter depuis un terminal standard pas byobu par exemple, pour que la saisie soit non bugger.
+
+### Service exposé
+
+url      |  params
+------------------
+get_db   |  commit
+-------------------
+add_db   |
+--------------------
+refresh_db | project
+--------------------
+nn
+
+

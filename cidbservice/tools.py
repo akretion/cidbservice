@@ -6,9 +6,10 @@ from psycopg2.extensions import AsIs
 from .helper import get_cursor
 import logging
 _logger = logging.getLogger(__name__)
+from contextlib import contextmanager
 
 
-def parsed(config_file):
+def parse(config_file):
     config = configparser.ConfigParser()
     config.read(config_file)
     vals = {
@@ -25,6 +26,7 @@ def parsed(config_file):
     vals['projects'] = {}
     def get_project_key(key):
         return config.get('project_%s' % project_name, key)
+
     project_vals = {
         'domain': config.get('provision', 'default_domain'),
         'spare_pool': config.getint('provision', 'default_spare_pool'),
@@ -35,8 +37,6 @@ def parsed(config_file):
 
     def update(project, getter, section, key, require=False):
         try:
-            if key == 'spare_pool':
-                import pdb; pdb.set_trace()
             project[key] = getattr(config, getter)(section, key)
         except configparser.NoOptionError:
             if require:
@@ -46,10 +46,14 @@ def parsed(config_file):
                 "Section %s no Specific value for %s use default"
                 % (section, key))
             pass
+
     for project_name in config.get('provision', 'projects').split(','):
         project = project_vals.copy()
         vals['projects'][project_name] = project
+        project['user'] = project_name
+
         section = 'provision_%s' % project_name
+        update(project, 'get', section, 'user')
         update(project, 'get', section, 'domain')
         update(project, 'getint', section, 'spare_pool')
         update(project, 'getboolean', section, 'port_mapping_active')
@@ -58,6 +62,19 @@ def parsed(config_file):
         update(project, 'get', section, 'token', require=True)
     return vals
 
+config = parse('/etc/cidbservice.conf')
+
+@contextmanager
+def get_cursor(db_name=None):
+    conn = psycopg2.connect(
+        host=config['db']['host'],
+        port=config['db']['port'],
+        database=db_name or config['db']['name'],
+        user=config['db']['user'],
+    )
+    conn.set_session(autocommit=True)
+    yield conn.cursor()
+    conn.close()
 
 def setup_service(app):
     db = app.config['db_ci_ref_db']
@@ -98,4 +115,3 @@ def setup_service(app):
         if conn:
             conn.close()
 
-config = parse('/etc/cidbservice.conf')

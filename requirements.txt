@@ -5,3 +5,4 @@ configparser
 gunicorn
 retrying
 requests
+pytest-flask
