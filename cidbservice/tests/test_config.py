@@ -18,6 +18,9 @@ class ConfigCase(unittest.TestCase):
                  'port': 5432,
                  'user': u'odoo',
                  },
+            'admin': {
+                'token': u'super-token',
+                },
             'projects': {
                 u'bar': {
                     'domain': u'ci.dy',
@@ -25,7 +28,7 @@ class ConfigCase(unittest.TestCase):
                     'port_mapping_max': None,
                     'port_mapping_start': None,
                     'spare_pool': 2,
-                    'token': u'456',
+                    'token': u'bar-token',
                     'user': u'foo',
                     },
                 u'foo': {
@@ -34,9 +37,7 @@ class ConfigCase(unittest.TestCase):
                     'port_mapping_max': 5,
                     'port_mapping_start': 8000,
                     'spare_pool': 3,
-                    'token': u'123',
+                    'token': u'foo-token',
                     'user': u'foo',
                 }}}
         self.assertEqual(config, expected)
-
-

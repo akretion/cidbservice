@@ -19,6 +19,7 @@ def parse(config_file):
             'name': config.get('db', 'name'),
         },
         'celery': {'broker': config.get('celery', 'broker')},
+        'admin': {'token': config.get('admin', 'token')},
     }
 
     # provision

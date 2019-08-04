@@ -12,15 +12,28 @@ app.config.update(config)
 
 port_mapping_service = PortMappingService(config)
 
+def check_authentication(project_name):
+    token = request.headers.get('X-Gitlab-Token')
+    # TODO python 3
+    # https://docs.python.org/3/library/hmac.html#hmac.compare_digest
+    if token == config['admin']['token']\
+            or token == config['projects'][project_name]['token']:
+        return True
+    else:
+        app.logger.error('invalid X-Gitlab-Token')
+        abort(401)
+
 
 @app.route('/db/refresh/<project_name>', methods=['GET'])
 def db_refresh(project_name):
+    check_authentication(project_name)
     db_service = DbService(app.logger, config)
     return db_service.refresh(project_name)
 
 
 @app.route('/db/get/<project_name>/<db_name>', methods=['GET'])
 def db_get(project_name, db_name):
+    check_authentication(project_name)
     db_service = DbService(app.logger, config)
     return db_service.get(project_name, db_name)
 
