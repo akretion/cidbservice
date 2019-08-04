@@ -34,6 +34,8 @@ class DbService(object):
         return '%s\n' % str(refresh_task.delay(project_name))
 
     def get(self, project_name, db_name):
+        if not db_name.startswith(project_name):
+            return abort(400, 'Wrong db name')
         with cursor() as cr:
             spares = get_spare(cr, project_name)
             if spares:
