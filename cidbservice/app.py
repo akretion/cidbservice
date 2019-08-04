@@ -12,10 +12,6 @@ app.config.update(config)
 
 port_mapping_service = PortMappingService(config)
 
-@app.route('/add_db', methods=['POST'])
-def add_db():
-    return db_service.add_db()
-
 
 @app.route('/db/refresh/<project_name>', methods=['GET'])
 def db_refresh(project_name):
@@ -23,14 +19,10 @@ def db_refresh(project_name):
     return db_service.refresh(project_name)
 
 
-@app.route('/drop_db/<project_name>/<db_name>', methods=['GET'])
-def drop_db(project_name, db_name):
-    return db_service.drop_db(project, db_name)
-
-
-@app.route('/get_db/<commit>', methods=['GET'])
-def get_db(commit):
-    return db_service.get_db(commit)
+@app.route('/db/get/<project_name>/<db_name>', methods=['GET'])
+def db_get(project_name, db_name):
+    db_service = DbService(app.logger, config)
+    return db_service.get(project_name, db_name)
 
 
 @app.route('/apps_map/<format_>', methods=['GET'])

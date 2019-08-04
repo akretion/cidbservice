@@ -3,7 +3,6 @@
 import configparser
 import psycopg2
 from psycopg2.extensions import AsIs
-from .helper import get_cursor
 import logging
 _logger = logging.getLogger(__name__)
 from contextlib import contextmanager
@@ -65,7 +64,7 @@ def parse(config_file):
 config = parse('/etc/cidbservice.conf')
 
 @contextmanager
-def get_cursor(db_name=None):
+def cursor(db_name=None):
     conn = psycopg2.connect(
         host=config['db']['host'],
         port=config['db']['port'],
@@ -75,6 +74,44 @@ def get_cursor(db_name=None):
     conn.set_session(autocommit=True)
     yield conn.cursor()
     conn.close()
+
+def get_spare_prefix(project_name):
+    return '%s_spare_' % project_name
+
+def get_template_name(project_name):
+    return '%s_template' % project_name
+
+def get_spare(cr, project_name):
+    spare_prefix = get_spare_prefix(project_name)
+    prefix = '%s%%' % spare_prefix
+    cr.execute('''
+        SELECT datname from  pg_database where
+        datname like %s ORDER BY datname
+    ''', (prefix,))
+    return [x[0] for x in cr.fetchall()]
+
+def spare_create(cr, project_name):
+    spare_name = get_next_spare_name(cr, project_name)
+    user = config['projects'][project_name]['user']
+    template = '%s_template' % project_name
+    cr.execute(
+        'CREATE DATABASE "%s" WITH OWNER "%s" TEMPLATE "%s";', (
+        AsIs(spare_name),
+        AsIs(user),
+        AsIs(template),
+    ))
+    return spare_name
+
+
+def get_next_spare_name(cr, project_name):
+    spares = get_spare(cr, project_name)
+    spare_number = 1
+    if spares:
+        spare_number = int(spares[-1].split('_')[-1]) + 1
+    spare_prefix = get_spare_prefix(project_name)
+    return '%s%02i' % (spare_prefix, spare_number)
+
+
 
 def setup_service(app):
     db = app.config['db_ci_ref_db']
