@@ -1,4 +1,4 @@
-FROM python:2.7-slim
+FROM python:3.7-slim
 MAINTAINER Sylvain Calador <sylvain.calador@akretion.com>
 
 RUN apt-get update \

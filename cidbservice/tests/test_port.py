@@ -9,7 +9,7 @@ from .common import CommonCase
 class TestPortService(CommonCase):
 
     def setUp(self):
-        super(TestPortService, self).setUp()
+        super().setUp()
         self.headers = {'X-Gitlab-Token': 'foo-token'}
         with cursor() as cr:
             cr.execute("DELETE FROM port_mapping")
@@ -29,7 +29,7 @@ class TestPortService(CommonCase):
     def _test_getting_port(self, project, db_name, expected_port):
         response = self.get("port/lock/{}/{}".format(project, db_name))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, str(expected_port))
+        self.assertEqual(int(response.data), expected_port)
         port = self.get_port(project, db_name)
         self.assertEqual(port, expected_port)
 
@@ -60,7 +60,7 @@ class TestPortService(CommonCase):
     def test_redirect_missing_port(self):
         response = self.get('port/redirect/foo/foo_42')
         self.assertEqual(response.status_code, 404)
-        self.assertIn('No port reserved for the database', response.data)
+        self.assertIn(b'No port reserved for the database', response.data)
 
     def test_wrong_token(self):
         self.headers = {'X-Gitlab-Token': 'fake'}
@@ -80,7 +80,7 @@ class TestPortService(CommonCase):
         for path in ['lock', 'release', 'redirect']:
             response = self.get("port/{}/foo/bar_1234".format(path))
             self.assertEqual(response.status_code, 400)
-            self.assertIn('Wrong db name', response.data)
+            self.assertIn(b'Wrong db name', response.data)
 
     def test_port_not_active(self):
         self.headers = {'X-Gitlab-Token': 'bar-token'}

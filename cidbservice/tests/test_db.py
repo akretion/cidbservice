@@ -10,7 +10,7 @@ from .common import CommonCase
 class TestDbService(CommonCase):
 
     def setUp(self):
-        super(TestDbService, self).setUp()
+        super().setUp()
         self.create_db('foo_template', 'foo', 'version_a')
         self.headers = {'X-Gitlab-Token': 'foo-token'}
 
@@ -77,7 +77,7 @@ class TestDbService(CommonCase):
     def test_get_db_with_wrong_name(self):
         response = self.get("db/get/foo/bar_1234")
         self.assertEqual(response.status_code, 400)
-        self.assertIn('Wrong db name', response.data)
+        self.assertIn(b'Wrong db name', response.data)
 
     def test_wrong_token(self):
         self.headers = {'X-Gitlab-Token': 'fake'}

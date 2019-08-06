@@ -10,35 +10,35 @@ class InitialisationCase(unittest.TestCase):
         config = parse(CONFIG_FILE)
         expected = {
             'celery': {
-                'broker': u'amqp://rabbitmq'
+                'broker': 'amqp://rabbitmq'
                 },
             'db': {
-                 'host': u'',
-                 'name': u'ci_ref',
-                 'port': u'',
-                 'user': u'odoo',
+                 'host': '',
+                 'name': 'ci_ref',
+                 'port': '',
+                 'user': 'odoo',
                  },
             'admin': {
-                'token': u'super-token',
+                'token': 'super-token',
                 },
             'projects': {
-                u'bar': {
-                    'domain': u'ci.dy',
+                'bar': {
+                    'domain': 'ci.dy',
                     'port_mapping_active': False,
                     'port_mapping_max': None,
                     'port_mapping_start': None,
                     'spare_pool': 2,
-                    'token': u'bar-token',
-                    'user': u'foo',
+                    'token': 'bar-token',
+                    'user': 'foo',
                     },
-                u'foo': {
-                    'domain': u'ci.dy',
+                'foo': {
+                    'domain': 'ci.dy',
                     'port_mapping_active': True,
                     'port_mapping_max': 5,
                     'port_mapping_start': 8000,
                     'spare_pool': 3,
-                    'token': u'foo-token',
-                    'user': u'foo',
+                    'token': 'foo-token',
+                    'user': 'foo',
                 }}}
         self.assertEqual(config, expected)
 

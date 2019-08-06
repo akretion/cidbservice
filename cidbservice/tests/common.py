@@ -28,7 +28,7 @@ class CommonCase(unittest.TestCase):
         return self.client.get(url, headers=self.headers)
 
     def setUp(self):
-        super(CommonCase, self).setUp()
+        super().setUp()
         celery.conf.task_always_eager = True
         self.clear()
         self.client = app.test_client()
