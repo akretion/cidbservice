@@ -15,17 +15,6 @@ class DbService(object):
         self.config = config
         self.logger = logger
 
-    def get_provision_param(self, project, key):
-
-        try:
-            return app.config['provision_%s_%s' % (project, key)]
-        except:
-            app.logger.error(
-                "can't find value for the key %s for the project %s" %
-                (key, project)
-            )
-            app.logger.error(app.config.get_namespace('provision_'))
-
     def refresh(self, project_name):
         self.logger.info(
             "triggering refeshing spare databases '%s' project: " % (
@@ -34,8 +23,6 @@ class DbService(object):
         return '%s\n' % str(refresh_task.delay(project_name))
 
     def get(self, project_name, db_name):
-        if not db_name.startswith(project_name):
-            return abort(400, 'Wrong db name')
         with cursor() as cr:
             spares = get_spare(cr, project_name)
             if spares:

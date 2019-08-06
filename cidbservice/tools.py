@@ -24,8 +24,6 @@ def parse(config_file):
 
     # provision
     vals['projects'] = {}
-    def get_project_key(key):
-        return config.get('project_%s' % project_name, key)
 
     project_vals = {
         'domain': config.get('provision', 'default_domain'),
@@ -79,9 +77,6 @@ def cursor(db_name=None):
 def get_spare_prefix(project_name):
     return '%s_spare_' % project_name
 
-def get_template_name(project_name):
-    return '%s_template' % project_name
-
 def get_spare(cr, project_name):
     spare_prefix = get_spare_prefix(project_name)
     prefix = '%s%%' % spare_prefix
@@ -133,8 +128,8 @@ def setup_db():
         cr.execute("""
             CREATE TABLE IF NOT EXISTS port_mapping (
                 id serial NOT NULL PRIMARY KEY,
-                project VARCHAR(255),
+                project VARCHAR(255) NOT NULL,
                 date TIMESTAMP NOT NULL,
-                merge_id INTEGER NOT NULL,
+                db_name VARCHAR(255) NOT NULL,
                 port INTEGER NOT NULL
             )""")
