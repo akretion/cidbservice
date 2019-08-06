@@ -1,0 +1,5 @@
+
+config/default.conf
+*/.coverage
+*/htmlcov/*
+.db

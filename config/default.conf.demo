@@ -2,8 +2,8 @@
 token = super-token
 
 [db]
-host = db
-port = 5432
+host =
+port =
 user = odoo
 name = ci_ref
 

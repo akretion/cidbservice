@@ -3,7 +3,7 @@ version: '3.7'
 services:
   db:
     environment:
-      - POSTGRES_USER=odoo
+      - POSTGRES_USER=postgres
       - POSTGRES_DB=db
     image: quay.io/akretion/postgresql:10
     volumes:
@@ -14,22 +14,18 @@ services:
   cidbservice:
     build: .
     environment:
-      POSTGRES_USER: odoo
-      POSTGRES_GROUP: odoo
-      SERVICE_HOST: 0.0.0.0
-      SERVICE_PORT: 54320
+      POSTGRES_USER: postgres
       GUNICORN_WORKERS: 1
       GUNICORN_TIMEOUT: 3600
     volumes:
-      - ./cidbservice.conf:/etc/cidbservice.conf
+      - ./config/:/etc/dbservice/
       - .db/socket/:/var/run/postgresql/
-      - ./:/workspace
+      - ./:/cidbservice
     depends_on:
       - db
       - rabbitmq
     labels:
       docky.main.service: true
-      docky.user: dbservice
-      traefik.backend: cidbservice
       traefik.frontend.rule: "Host:ci.dy"
       traefik.port: 54320
+    entrypoint: /usr/local/bin/dev-entrypoint

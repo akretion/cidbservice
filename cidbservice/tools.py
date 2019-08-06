@@ -6,16 +6,21 @@ from psycopg2.extensions import AsIs
 import logging
 _logger = logging.getLogger(__name__)
 from contextlib import contextmanager
+CONFIG_FILE = '/etc/dbservice/default.conf'
 
 
 def parse(config_file):
     config = configparser.ConfigParser()
     config.read(config_file)
+    # port is not mandatory we can use unix socket
+    port = config.get('db', 'port')
+    if port:
+        port = int(port)
     vals = {
         'db': {
             'host': config.get('db', 'host'),
             'user': config.get('db', 'user'),
-            'port': config.getint('db', 'port'),
+            'port': port,
             'name': config.get('db', 'name'),
         },
         'celery': {'broker': config.get('celery', 'broker')},
@@ -60,7 +65,7 @@ def parse(config_file):
         update(project, 'get', section, 'token', require=True)
     return vals
 
-config = parse('/etc/cidbservice.conf')
+config = parse(CONFIG_FILE)
 
 @contextmanager
 def cursor(db_name=None):

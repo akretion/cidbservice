@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-from ..tools import parse, setup_db, cursor
+from ..tools import parse, setup_db, cursor, CONFIG_FILE
 
 
 class InitialisationCase(unittest.TestCase):
 
     def test_config(self):
-        config = parse('/etc/cidbservice.conf')
+        config = parse(CONFIG_FILE)
         expected = {
             'celery': {
                 'broker': u'amqp://rabbitmq'
                 },
             'db': {
-                 'host': u'db',
+                 'host': u'',
                  'name': u'ci_ref',
-                 'port': 5432,
+                 'port': u'',
                  'user': u'odoo',
                  },
             'admin': {
