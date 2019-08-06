@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-from ..tools import parse
+from ..tools import parse, setup_db, cursor
 
 
-class ConfigCase(unittest.TestCase):
+class InitialisationCase(unittest.TestCase):
 
     def test_config(self):
         config = parse('/etc/cidbservice.conf')
@@ -41,3 +41,16 @@ class ConfigCase(unittest.TestCase):
                     'user': u'foo',
                 }}}
         self.assertEqual(config, expected)
+
+    def test_setup(self):
+        with cursor('postgres') as cr:
+            cr.execute("DROP DATABASE IF EXISTS ci_ref")
+        setup_db()
+        with cursor('ci_ref') as cr:
+            cr.execute("""SELECT EXISTS
+                (SELECT 1
+                FROM information_schema.tables
+                WHERE table_name = 'port_mapping'
+                )""" )
+            res = cr.fetchall()
+            self.assertTrue(res[0][0])

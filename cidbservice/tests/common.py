@@ -24,6 +24,9 @@ class CommonCase(unittest.TestCase):
             for db in cr.fetchall():
                 cr.execute("DROP DATABASE {}".format(db[0]))
 
+    def get(self, url):
+        return self.client.get(url, headers=self.headers)
+
     def setUp(self):
         super(CommonCase, self).setUp()
         celery.conf.task_always_eager = True

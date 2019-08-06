@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright 2019 Akretion (http://www.akretion.com).
 # @author Sébastien BEAU <sebastien.beau@akretion.com>
-# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 
 from ..tools import cursor
 from ..task import spare_pool_task
@@ -34,9 +33,6 @@ class TestDbService(CommonCase):
                 )""" , (version,))
             res = cr.fetchall()
             self.assertTrue(res[0][0])
-
-    def get(self, url):
-        return self.client.get(url, headers=self.headers)
 
     def test_db_refresh_without_spare(self):
         self.assertEqual(self.get("db/refresh/foo").status_code, 200)

@@ -91,6 +91,15 @@ def get_spare(cr, project_name):
     ''', (prefix,))
     return [x[0] for x in cr.fetchall()]
 
+def exist(cr, db_name):
+    cr.execute('''
+        SELECT datname from  pg_database where
+        datname = %s ORDER BY datname
+    ''', (db_name,))
+    result = cr.fetchall()
+    return bool(result)
+
+
 def spare_create(cr, project_name):
     spare_name = get_next_spare_name(cr, project_name)
     user = config['projects'][project_name]['user']
@@ -113,43 +122,19 @@ def get_next_spare_name(cr, project_name):
     return '%s%02i' % (spare_prefix, spare_number)
 
 
-
-def setup_service(app):
-    db = app.config['db_ci_ref_db']
-    try:
-        conn = None
-        cr, conn = get_cursor(app, app.config['db_template'])
-        cr.execute('CREATE DATABASE "%s" WITH OWNER "%s";', (
-            AsIs(db), AsIs(app.config['db_user'])
-        ))
-    except psycopg2.ProgrammingError:
-        app.logger.info(
-            'Impossible to create "%s" (maybe already exists)' % db
-        )
-    finally:
-        if conn:
-            conn.close()
-
-    try:
-        conn = None
-        cr, conn = get_cursor(db)
-        cr.execute('''
-            CREATE TABLE IF NOT EXISTS merge_request (
+def setup_db():
+    db_name = config['db']['name']
+    with cursor('postgres') as cr:
+        if not exist(cr, db_name):
+            cr.execute('CREATE DATABASE "%s" WITH OWNER "%s";', (
+                AsIs(db_name), AsIs(config['db']['user'])
+            ))
+    with cursor(db_name) as cr:
+        cr.execute("""
+            CREATE TABLE IF NOT EXISTS port_mapping (
                 id serial NOT NULL PRIMARY KEY,
+                project VARCHAR(255),
+                date TIMESTAMP NOT NULL,
                 merge_id INTEGER NOT NULL,
-                merge_commit VARCHAR(80),
-                merge_request json NOT NULL,
-                merge_date TIMESTAMP NOT NULL,
-                merge_test_url VARCHAR(255),
-                backend_name VARCHAR(80),
-                project VARCHAR(255)
-            );
-        ''')
-    except:
-        app.logger.critical(
-            'Impossible to create "merge_request" table'
-        )
-    finally:
-        if conn:
-            conn.close()
-
+                port INTEGER NOT NULL
+            )""")
