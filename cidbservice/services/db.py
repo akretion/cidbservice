@@ -1,15 +1,12 @@
 # -*- coding: utf-8 -*-
 
-import requests
-from retrying import retry
 from psycopg2.extensions import AsIs
-from flask import abort
-from ..task import refresh_task, spare_pool_task
-from ..tools import cursor, get_spare, spare_create, spare_create
+
+from ..task import refresh_task
+from ..tools import cursor, get_spare, spare_create, spare_pool_task
 
 
 class DbService(object):
-
     def __init__(self, logger, config):
         super(DbService, self).__init__()
         self.config = config
@@ -17,10 +14,10 @@ class DbService(object):
 
     def refresh(self, project_name):
         self.logger.info(
-            "triggering refeshing spare databases '%s' project: " % (
-            project_name,
-        ))
-        return '%s\n' % str(refresh_task.delay(project_name))
+            "triggering refeshing spare databases '%s' project: "
+            % (project_name,)
+        )
+        return "%s\n" % str(refresh_task.delay(project_name))
 
     def get(self, project_name, db_name):
         with cursor() as cr:
@@ -31,7 +28,8 @@ class DbService(object):
                 spare = spare_create(cr, project_name)
             cr.execute(
                 """ALTER DATABASE "%s" RENAME TO "%s" """,
-                (AsIs(spare), AsIs(db_name)))
+                (AsIs(spare), AsIs(db_name)),
+            )
 
         # Create consummed spare in background
         spare_pool_task.delay(project_name)
