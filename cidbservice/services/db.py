@@ -2,8 +2,8 @@
 
 from psycopg2.extensions import AsIs
 
-from ..task import refresh_task
-from ..tools import cursor, get_spare, spare_create, spare_pool_task
+from ..task import refresh_task, spare_pool_task
+from ..tools import cursor, get_spare, spare_create
 
 
 class DbService(object):
