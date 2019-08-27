@@ -1,0 +1,10 @@
+#!/bin/bash
+
+USER_ID=$(stat -c '%u' /var/run/postgresql)
+useradd -u $USER_ID $POSTGRES_USER
+pip install pytest-cov
+ln -s /etc/dbservice/default.conf.demo /etc/dbservice/default.conf
+echo "Swith to user $POSTGRES_USER with 'su $POSTGRES_USER'"
+echo "Then run bash"
+echo "Run test with 'pytest cidbservice/tests'"
+exec "$@"

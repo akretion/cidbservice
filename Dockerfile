@@ -1,14 +1,19 @@
-FROM python:2.7-slim
+FROM python:3.7-slim
 MAINTAINER Sylvain Calador <sylvain.calador@akretion.com>
 
-ENV WORKSPACE /workspace
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gpg curl dirmngr \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV WORKSPACE /cidbservice
 RUN mkdir -p $WORKSPACE
 COPY . $WORKSPACE
+WORKDIR $WORKSPACE
 
-COPY requirements.txt $WORKSPACE/requirements.txt
-RUN pip install -r $WORKSPACE/requirements.txt
-RUN pip install --editable $WORKSPACE
+RUN pip install -r requirements.txt
+RUN pip install --editable .
 
-COPY docker-cidbservice.sh /usr/local/bin/
-COPY docker-celery.sh /usr/local/bin/
+COPY bin/dbservice /usr/local/bin/
+COPY bin/dbservice-job /usr/local/bin/
+COPY bin/dev-entrypoint /usr/local/bin/
 CMD ["bash"]

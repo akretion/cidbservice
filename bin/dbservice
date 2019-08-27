@@ -3,10 +3,10 @@
 USER_ID=$(stat -c '%u' /var/run/postgresql)
 WSGI="cidbservice.app:create_app()"
 useradd -u $USER_ID $POSTGRES_USER
-gunicorn -b $SERVICE_HOST:$SERVICE_PORT \
+gunicorn -b 0.0.0.0:54320 \
     --access-logfile - \
     $WSGI \
     --user $POSTGRES_USER \
-    --group $POSTGRES_GROUP \
+    --group $POSTGRES_USER \
     --workers $GUNICORN_WORKERS \
     --timeout $GUNICORN_TIMEOUT

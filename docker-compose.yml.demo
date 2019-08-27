@@ -1,23 +1,18 @@
-version: '2'
+version: '3'
 
 services:
   cidbservice:
     build: .
-    entrypoint: /usr/local/bin/docker-cidbservice.sh
+    entrypoint: /usr/local/bin/dbservice
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_GROUP: postgres
-      SERVICE_HOST: 0.0.0.0
-      SERVICE_PORT: 54320
       GUNICORN_WORKERS: 5
       GUNICORN_TIMEOUT: 3600
     volumes:
-      - /etc/cidbservice.conf:/etc/cidbservice.conf
+      - ./config:/etc/dbservice
       - /var/run/postgresql/:/var/run/postgresql/
-    ports:
-      - "54320:54320"
     restart: always
-    links:
+    depends_on:
       - rabbitmq
       - celery
     labels:
@@ -25,25 +20,15 @@ services:
       - "traefik.backend=cidbservice"
       - "traefik.frontend.rule=Host:db.ci-akretion.com"
       - "traefik.port=54320"
-
   celery:
     build: .
-    entrypoint: /usr/local/bin/docker-celery.sh
+    entrypoint: /usr/local/bin/dbservice-job
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_GROUP: postgres
-      SERVICE_HOST: 0.0.0.0
-      SERVICE_PORT: 54320
-#     CELERY_RDB_PORT: 6900
-#     CELERY_RDB_HOST: 0.0.0.0
     volumes:
-      - /etc/cidbservice.conf:/etc/cidbservice.conf
+      - ./config:/etc/dbservice
       - /var/run/postgresql/:/var/run/postgresql/
     restart: always
-#   ports:
-#     - "0.0.0.0:6900-6999:6900-6999"
   rabbitmq:
     image: rabbitmq:3-management
-    ports:
-      - "5672:5672"
     restart: always

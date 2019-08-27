@@ -1,0 +1,27 @@
+[admin]
+token = super-token
+
+[db]
+host =
+port =
+user = odoo
+name = ci_ref
+
+[provision]
+projects = foo,bar
+default_domain = ci.dy
+default_spare_pool = 2
+
+[celery]
+broker = amqp://rabbitmq
+
+[provision_foo]
+token = foo-token
+spare_pool = 3
+port_mapping_active = true
+port_mapping_start = 8000
+port_mapping_max = 5
+
+[provision_bar]
+token = bar-token
+user = foo
