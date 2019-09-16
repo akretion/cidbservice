@@ -16,4 +16,6 @@ RUN pip install --editable .
 COPY bin/dbservice /usr/local/bin/
 COPY bin/dbservice-job /usr/local/bin/
 COPY bin/dev-entrypoint /usr/local/bin/
+COPY config/default.conf /etc/dbservice/default.conf
+RUN chmod 444 /etc/dbservice/default.conf
 CMD ["bash"]

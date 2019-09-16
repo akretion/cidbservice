@@ -3,4 +3,3 @@
 Dockerfile
 cidbservice/tests/*
 .db
-config/default.conf
