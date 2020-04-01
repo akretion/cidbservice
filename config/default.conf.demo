@@ -7,6 +7,10 @@ port =
 user = odoo
 name = ci_ref
 
+[gitlab]
+host = https://gitlab.akretion.com
+token =
+
 [provision]
 projects = foo,bar
 default_domain = ci.dy

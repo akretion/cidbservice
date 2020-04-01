@@ -1,4 +1,5 @@
 # /usr/bin/env python2
+import logging
 
 from flask import Flask, abort, request
 
@@ -12,6 +13,11 @@ app.config.update(config)
 db_service = DbService(app.logger, config)
 port_service = PortService(app.logger, config)
 
+if __name__ != "__main__":
+    gunicorn_logger = logging.getLogger("gunicorn.error")
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
+
 
 def check_authentication(project_name):
     token = request.headers.get("X-Gitlab-Token")
@@ -19,7 +25,7 @@ def check_authentication(project_name):
     # https://docs.python.org/3/library/hmac.html#hmac.compare_digest
     if (
         token == config["admin"]["token"]
-        or token == config["projects"][project_name]["token"]
+        or project_name and token == config["projects"][project_name]["token"]
     ):
         return True
     else:
@@ -35,6 +41,12 @@ def check_port_active(project_name):
 def check_db_name(project_name, db_name):
     if not db_name.startswith(project_name):
         return abort(400, "Wrong db name")
+
+
+@app.route("/db/clean", methods=["GET"])
+def db_clean():
+    check_authentication(None)
+    return db_service.clean()
 
 
 @app.route("/db/refresh/<project_name>", methods=["GET"])

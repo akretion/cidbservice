@@ -30,6 +30,12 @@ def parse(config_file):
         "admin": {"token": config.get("admin", "token")},
     }
 
+    # gitlab
+    vals["gitlab"] = {
+        "host": config.get("gitlab", "host"),
+        "token": config.get("gitlab", "token"),
+    }
+
     # provision
     vals["projects"] = {}
 
