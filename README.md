@@ -1,4 +1,4 @@
-# Configure the poject to test
+# Configure the project to test
 
 ## Webhook
 
