@@ -1,5 +1,5 @@
 Flask
-celery
+celery==4.4.7
 psycopg2-binary
 configparser
 gunicorn
