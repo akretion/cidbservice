@@ -93,12 +93,12 @@ def cursor(db_name=None):
     conn.close()
 
 
-def get_spare_prefix(project_name):
-    return "%s_spare_" % project_name
+def get_spare_prefix(db_name):
+    return "%s_spare_" % db_name
 
 
-def get_spare(cr, project_name):
-    spare_prefix = get_spare_prefix(project_name)
+def get_spare(cr, db_name):
+    spare_prefix = get_spare_prefix(db_name)
     prefix = "%s%%" % spare_prefix
     cr.execute(
         """
@@ -122,10 +122,14 @@ def exist(cr, db_name):
     return bool(result)
 
 
-def spare_create(cr, project_name):
-    spare_name = get_next_spare_name(cr, project_name)
+def spare_create(cr, project_name, version):
+    if version:
+        db_name = "{}_{}".format(project_name, version)
+    else:
+        db_name = project_name
+    spare_name = get_next_spare_name(cr, db_name)
     user = config["projects"][project_name]["user"]
-    template = "%s_template" % project_name
+    template = "{}_template".format(db_name)
     cr.execute(
         'CREATE DATABASE "%s" WITH OWNER "%s" TEMPLATE "%s";',
         (AsIs(spare_name), AsIs(user), AsIs(template)),

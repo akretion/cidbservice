@@ -25,7 +25,8 @@ def check_authentication(project_name):
     # https://docs.python.org/3/library/hmac.html#hmac.compare_digest
     if (
         token == config["admin"]["token"]
-        or project_name and token == config["projects"][project_name]["token"]
+        or project_name
+        and token == config["projects"][project_name]["token"]
     ):
         return True
     else:
@@ -50,16 +51,18 @@ def db_clean():
 
 
 @app.route("/db/refresh/<project_name>", methods=["GET"])
-def db_refresh(project_name):
+@app.route("/db/refresh/<project_name>/<int:version>", methods=["GET"])
+def db_refresh(project_name, version=None):
     check_authentication(project_name)
-    return db_service.refresh(project_name)
+    return db_service.refresh(project_name, version)
 
 
 @app.route("/db/get/<project_name>/<db_name>", methods=["GET"])
-def db_get(project_name, db_name):
+@app.route("/db/get/<project_name>/<db_name>/<int:version>", methods=["GET"])
+def db_get(project_name, db_name, version=None):
     check_authentication(project_name)
     check_db_name(project_name, db_name)
-    return db_service.get(project_name, db_name)
+    return db_service.get(project_name, db_name, version)
 
 
 @app.route("/port/lock/<project_name>/<db_name>", methods=["GET"])
