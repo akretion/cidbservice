@@ -32,9 +32,9 @@ def spare_pool_task(project_name):
 
 
 @celery.task(**TASK_KWARGS)
-def refresh_task(project_name):
+def refresh_task(db_name):
     with cursor() as cr:
-        for spare in get_spare(cr, project_name):
+        for spare in get_spare(cr, db_name):
             logger.info("Drop spare database {}".format(spare))
             cr.execute("DROP DATABASE IF EXISTS {}".format(spare))
-        spare_pool_task.delay(project_name)
+        spare_pool_task.delay(db_name)
