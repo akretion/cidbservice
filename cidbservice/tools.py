@@ -45,6 +45,7 @@ def parse(config_file):
         "port_mapping_active": False,
         "port_mapping_start": None,
         "port_mapping_max": None,
+        "gitlab_project_id": None,
     }
 
     def update(project, getter, section, key, require=False):
@@ -73,6 +74,7 @@ def parse(config_file):
         update(project, "getboolean", section, "port_mapping_active")
         update(project, "getint", section, "port_mapping_start")
         update(project, "getint", section, "port_mapping_max")
+        update(project, "getint", section, "gitlab_project_id")
         update(project, "get", section, "token", require=True)
     return vals
 
