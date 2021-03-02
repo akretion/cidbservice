@@ -4,6 +4,7 @@ import logging
 from flask import Flask, abort, request
 
 from .services.db import DbService
+from .services.mr import MrService
 from .services.port import PortService
 from .tools import config, setup_db
 
@@ -12,6 +13,7 @@ app.config.update(config)
 
 db_service = DbService(app.logger, config)
 port_service = PortService(app.logger, config)
+mr_service = MrService(app.logger, config)
 
 if __name__ != "__main__":
     gunicorn_logger = logging.getLogger("gunicorn.error")
@@ -25,7 +27,8 @@ def check_authentication(project_name):
     # https://docs.python.org/3/library/hmac.html#hmac.compare_digest
     if (
         token == config["admin"]["token"]
-        or project_name and token == config["projects"][project_name]["token"]
+        or project_name
+        and token == config["projects"][project_name]["token"]
     ):
         return True
     else:
@@ -83,6 +86,12 @@ def port_redirect(project_name, db_name):
     check_db_name(project_name, db_name)
     check_port_active(project_name)
     return port_service.redirect(project_name, db_name)
+
+
+@app.route("/mr/environment/<project_name>/<mr_number>", methods=["GET"])
+def mr_environment(project_name, mr_number):
+    check_authentication(project_name)
+    return mr_service.environment(project_name, mr_number)
 
 
 @app.before_first_request
