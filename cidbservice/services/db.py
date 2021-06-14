@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from datetime import datetime, timedelta
+
 import requests
 from psycopg2.extensions import AsIs
 
@@ -88,3 +90,29 @@ class DbService(object):
                         (db_name),
                     )
         return "ok"
+
+    def check(self):
+        projects = self.config["projects"].keys()
+        self.logger.info("Start checking databases")
+        result = {p: {"lastcall": None, "status": "FAILED"} for p in projects}
+        for project in projects:
+            try:
+                with cursor(db_name=f"{project}_template") as cr:
+                    cr.execute(
+                        "SELECT lastcall FROM ir_cron "
+                        "WHERE cron_name = 'Database Age Cron'"
+                    )
+                    result[project]["lastcall"] = cr.fetchone()[0]
+            except Exception as e:
+                self.logger.debug(
+                    "{}_template check failed: {}".format(project, e)
+                )
+        status = "OK"
+        for item in result.values():
+            if item["lastcall"] and item[
+                "lastcall"
+            ] > datetime.now() - timedelta(days=1, hours=2):
+                item["status"] = "OK"
+            else:
+                status = "FAILED"
+        return {"status": status, "detail": result}
