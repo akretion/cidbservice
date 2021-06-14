@@ -50,6 +50,12 @@ def db_clean():
     return db_service.clean()
 
 
+@app.route("/db/check", methods=["GET"])
+def db_check():
+    check_authentication(None)
+    return db_service.check()
+
+
 @app.route("/db/refresh/<project_name>", methods=["GET"])
 @app.route("/db/refresh/<project_name>/<int:version>", methods=["GET"])
 def db_refresh(project_name, version=None):
