@@ -69,16 +69,18 @@ class DbService(object):
             cr.execute("SELECT datname FROM pg_database")
             dbs = [x[0] for x in cr.fetchall()]
             for db in dbs:
-                iid = None
-                try:
-                    info = db.split("_")
-                    iid = int(info[1])
-                except Exception:
+                db.replace("\"", "")
+                db.replace("'", "")
+                match = re.search('[-_](\d+)(_test)?$', db)
+                if match:
+                    iid = int(match.group(1))
+                    if iid not in opened_iid:
+                        self.logger.info("Drop database {}".format(db))
+                        cr.execute("DROP DATABASE \"{}\"".format(db))
+                    else:
+                        self.logger.info("Keep database {}".format(db))
+                else:
                     self.logger.info("Skip clean database {}".format(db))
-                    continue
-                if iid not in opened_iid:
-                    self.logger.info("Drop database {}".format(db))
-                    cr.execute("DROP DATABASE {}".format(db))
 
             cr.execute("SELECT db_name, port FROM port_mapping")
             for db_name, port in cr.fetchall():
