@@ -3,3 +3,4 @@ config/default.conf
 */.coverage
 */htmlcov/*
 .db
+docker-compose.yml
