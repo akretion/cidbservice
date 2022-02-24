@@ -3,4 +3,4 @@
 USER_ID=$(stat -c '%u' /var/run/postgresql)
 SERVICE="cidbservice.task.celery"
 useradd -u $USER_ID $POSTGRES_USER
-celery worker -A $SERVICE --loglevel=INFO --uid=$USER_ID
+celery -A $SERVICE worker --loglevel=INFO --uid=$USER_ID
