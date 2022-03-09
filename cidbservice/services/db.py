@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
+import re
 from datetime import datetime, timedelta
 
-import re
 import requests
 from psycopg2.extensions import AsIs
 
@@ -70,14 +70,17 @@ class DbService(object):
             cr.execute("SELECT datname FROM pg_database")
             dbs = [x[0] for x in cr.fetchall()]
             for db in dbs:
-                db.replace("\"", "")
+                db.replace('"', "")
                 db.replace("'", "")
-                match = re.search('[-_](\d+)(_test)?$', db)
+                if "spare" in db or "preprod" in db or "demo" in db:
+                    self.logger.info("Skip clean database {}".format(db))
+                    continue
+                match = re.search("[-_](\\d+)(_test)?$", db)
                 if match:
                     iid = int(match.group(1))
                     if iid not in opened_iid:
                         self.logger.info("Drop database {}".format(db))
-                        cr.execute("DROP DATABASE \"{}\"".format(db))
+                        cr.execute('DROP DATABASE "{}"'.format(db))
                     else:
                         self.logger.info("Keep database {}".format(db))
                 else:
