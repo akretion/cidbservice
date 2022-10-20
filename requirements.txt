@@ -6,3 +6,4 @@ gunicorn
 retrying
 requests
 pytest-flask
+importlib-metadata==4.13.0 # import problems if not set
